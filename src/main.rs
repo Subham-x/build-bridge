@@ -35,6 +35,7 @@ struct ProjectDashboardApp {
     sidebar_width: f32,
     sidebar_animated_width: f32,
     create_modal_open: bool,
+    selected_template: TemplateKind,
     search_text: String,
     project_name: String,
 }
@@ -50,6 +51,7 @@ impl Default for ProjectDashboardApp {
             sidebar_width: 260.0,
             sidebar_animated_width: 260.0,
             create_modal_open: false,
+            selected_template: TemplateKind::AndroidStudio,
             search_text: String::new(),
             project_name: "MyAndroidProject-1".to_owned(),
         }
@@ -63,11 +65,21 @@ enum Nav {
     Theme,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TemplateKind {
+    AndroidStudio,
+    Flutter,
+}
+
 impl eframe::App for ProjectDashboardApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         if !self.zoom_applied {
             self.zoom_applied = true;
             ctx.set_zoom_factor(1.20);
+        }
+
+        if self.create_modal_open && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.create_modal_open = false;
         }
 
         if !self.mica_attempted {
@@ -208,34 +220,90 @@ impl eframe::App for ProjectDashboardApp {
                 Color32::from_rgba_premultiplied(0, 0, 0, 160),
             );
 
+            let mut close_modal = false;
+            let mut open = self.create_modal_open;
             egui::Window::new("Create Project")
                 .order(egui::Order::Foreground)
+                .open(&mut open)
                 .collapsible(false)
                 .resizable(false)
                 .movable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .default_width(360.0)
                 .show(ctx, |ui| {
+                    ui.label(RichText::new("Templates").strong());
+                    ui.add_space(8.0);
+
                     ui.vertical_centered(|ui| {
-                        Frame::group(ui.style()).show(ui, |ui| {
-                            ui.set_min_size(Vec2::new(200.0, 200.0));
-                            ui.vertical_centered(|ui| {
-                                ui.add_space(44.0);
-                                ui.label(RichText::new("📱").size(44.0));
-                                ui.add_space(66.0);
-                                ui.label(RichText::new("Android Studio"));
-                            });
+                        ui.horizontal_centered(|ui| {
+                            let android_response = template_card(
+                                ui,
+                                self.selected_template == TemplateKind::AndroidStudio,
+                                "📱",
+                                "Android Studio",
+                            );
+                            if android_response.clicked() {
+                                self.selected_template = TemplateKind::AndroidStudio;
+                            }
+
+                            ui.add_space(8.0);
+
+                            let flutter_response = template_card(
+                                ui,
+                                self.selected_template == TemplateKind::Flutter,
+                                "🦋",
+                                "Flutter",
+                            );
+                            if flutter_response.clicked() {
+                                self.selected_template = TemplateKind::Flutter;
+                            }
                         });
 
                         ui.add_space(12.0);
-                        if ui.add(brand_button("Create")).clicked() {
-                            self.project_name = "AndroidStudioProject-1".to_owned();
-                            self.create_modal_open = false;
-                        }
+                        ui.horizontal(|ui| {
+                            if ui.button("Cancel").clicked() {
+                                close_modal = true;
+                            }
+                            if ui.add(brand_button("Create")).clicked() {
+                                self.project_name = match self.selected_template {
+                                    TemplateKind::AndroidStudio => "AndroidStudioProject-1".to_owned(),
+                                    TemplateKind::Flutter => "FlutterProject-1".to_owned(),
+                                };
+                                close_modal = true;
+                            }
+                        });
                     });
                 });
+
+            if close_modal {
+                open = false;
+            }
+            self.create_modal_open = open;
         }
     }
+}
+
+fn template_card(ui: &mut egui::Ui, selected: bool, icon: &str, label: &str) -> egui::Response {
+    let card_size = Vec2::new(120.0, 120.0);
+    let stroke = if selected {
+        egui::Stroke::new(2.0, Color32::from_rgb(2, 110, 193))
+    } else {
+        ui.style().visuals.widgets.inactive.bg_stroke
+    };
+
+    let content = format!("{}\n\n{}", icon, label);
+    let response = ui.add_sized(
+        card_size,
+        Button::new(RichText::new(content).size(16.0))
+            .fill(ui.style().visuals.panel_fill)
+            .stroke(stroke),
+    );
+
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+
+    response
 }
 
 fn brand_button(label: &str) -> Button<'_> {
