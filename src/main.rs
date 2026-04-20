@@ -1,8 +1,8 @@
 use chrono::Local;
 use directories::ProjectDirs;
 use eframe::egui::{
-    self, Align, Button, Color32, ComboBox, Frame, Image, ImageSource, Layout, Margin, RichText,
-    ScrollArea, TextEdit, Vec2,
+    self, Align, Button, Color32, ComboBox, Frame, Image, ImageSource, Layout, Margin,
+    RichText, ScrollArea, ThemePreference, TextEdit, Vec2,
 };
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -49,6 +49,7 @@ struct ProjectDashboardApp {
     form_error: Option<String>,
     status_message: Option<String>,
     storage_error: Option<String>,
+    theme_popup_open: bool,
 }
 
 impl Default for ProjectDashboardApp {
@@ -72,6 +73,7 @@ impl Default for ProjectDashboardApp {
             form_error: None,
             status_message: None,
             storage_error,
+            theme_popup_open: false,
         }
     }
 }
@@ -80,7 +82,6 @@ impl Default for ProjectDashboardApp {
 enum Nav {
     Home,
     Archived,
-    Theme,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -101,7 +102,7 @@ enum CreateModalStep {
 impl ProjectType {
     fn label(self) -> &'static str {
         match self {
-            Self::Android => "Android",
+            Self::Android => "Android Studio",
             Self::Flutter => "Flutter",
             Self::DotNet => ".NET",
             Self::Python => "Python",
@@ -110,13 +111,7 @@ impl ProjectType {
     }
 
     fn storage_value(self) -> &'static str {
-        match self {
-            Self::Android => "android",
-            Self::Flutter => "flutter",
-            Self::DotNet => "dotnet",
-            Self::Python => "python",
-            Self::ReactNative => "react-native",
-        }
+        self.label()
     }
 
     fn all() -> [Self; 5] {
@@ -127,6 +122,17 @@ impl ProjectType {
             Self::Python,
             Self::ReactNative,
         ]
+    }
+
+    fn from_storage(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "android" | "android studio" => Some(Self::Android),
+            "flutter" => Some(Self::Flutter),
+            ".net" | "dotnet" => Some(Self::DotNet),
+            "python" => Some(Self::Python),
+            "react native" | "react-native" => Some(Self::ReactNative),
+            _ => None,
+        }
     }
 }
 
@@ -233,7 +239,12 @@ impl eframe::App for ProjectDashboardApp {
                         "Archived",
                         IconKind::Archive,
                     );
-                    nav_item(ui, dark, &mut self.nav, Nav::Theme, "Theme", IconKind::Theme);
+                    ui.horizontal(|ui| {
+                        ui.add(icon_image(themed_icon(dark, IconKind::Theme), 18.0));
+                        if ui.button("Theme").clicked() {
+                            self.theme_popup_open = true;
+                        }
+                    });
                 }
             });
         }
@@ -295,15 +306,16 @@ impl eframe::App for ProjectDashboardApp {
                                     let _ = ui.add(brand_button("Serve"));
                                 });
                             });
-                            ui.small(format!("{}  |  {}", project.project_type, project.main_path));
+                            ui.horizontal_wrapped(|ui| {
+                                let framework_label = map_framework_label(&project.project_type);
+                                ui.label(egui::RichText::new(framework_label).strong());
+                                ui.label("•");
+                                ui.label(egui::RichText::new(&project.main_path).italics());
+                            });
                         });
                         ui.add_space(6.0);
                     }
                 });
-
-                if let Some(path) = &self.projects_file_path {
-                    ui.small(format!("Projects file: {}", path.display()));
-                }
 
                 if let Some(message) = &self.status_message {
                     ui.colored_label(Color32::from_rgb(130, 210, 130), message);
@@ -319,6 +331,34 @@ impl eframe::App for ProjectDashboardApp {
                 }
             });
         });
+
+        if self.theme_popup_open {
+            let mut open = self.theme_popup_open;
+            let mut close_theme_popup = false;
+            egui::Window::new("Theme")
+                .collapsible(false)
+                .resizable(false)
+                .default_size(Vec2::new(220.0, 130.0))
+                .open(&mut open)
+                .show(ctx, |ui| {
+                    if ui.button("System").clicked() {
+                        ctx.set_theme(ThemePreference::System);
+                        close_theme_popup = true;
+                    }
+                    if ui.button("Light").clicked() {
+                        ctx.set_theme(ThemePreference::Light);
+                        close_theme_popup = true;
+                    }
+                    if ui.button("Dark").clicked() {
+                        ctx.set_theme(ThemePreference::Dark);
+                        close_theme_popup = true;
+                    }
+                });
+            if close_theme_popup {
+                open = false;
+            }
+            self.theme_popup_open = open;
+        }
 
         if self.create_modal_open {
             // Dim the page behind the modal.
@@ -338,7 +378,7 @@ impl eframe::App for ProjectDashboardApp {
                 .order(egui::Order::Foreground)
                 .open(&mut open)
                 .collapsible(false)
-                .resizable(true)
+                .resizable(false)
                 .movable(true)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .default_size(Vec2::new(360.0, 220.0))
@@ -500,9 +540,13 @@ impl ProjectDashboardApp {
                 let nav_match = match self.nav {
                     Nav::Home => project.status != "archived",
                     Nav::Archived => project.status == "archived",
-                    Nav::Theme => true,
                 };
-                let search_match = query.is_empty() || project.name.to_lowercase().contains(&query);
+                let framework = map_framework_label(&project.project_type).to_lowercase();
+                let search_match = query.is_empty()
+                    || project.name.to_lowercase().contains(&query)
+                    || project.main_path.to_lowercase().contains(&query)
+                    || framework.contains(&query)
+                    || project.status.to_lowercase().contains(&query);
                 nav_match && search_match
             })
             .cloned()
@@ -671,7 +715,7 @@ fn sample_projects() -> Vec<ProjectRecord> {
     vec![
         ProjectRecord {
             name: "Demo1".to_owned(),
-            project_type: "android".to_owned(),
+            project_type: "Android Studio".to_owned(),
             main_path: "/projects/demo1".to_owned(),
             builds: vec![
                 BuildEntry {
@@ -689,7 +733,7 @@ fn sample_projects() -> Vec<ProjectRecord> {
         },
         ProjectRecord {
             name: "Demo2".to_owned(),
-            project_type: "android".to_owned(),
+            project_type: "Android Studio".to_owned(),
             main_path: "/projects/demo2".to_owned(),
             builds: vec![BuildEntry {
                 name: "debug".to_owned(),
@@ -701,7 +745,7 @@ fn sample_projects() -> Vec<ProjectRecord> {
         },
         ProjectRecord {
             name: "Demo3".to_owned(),
-            project_type: "android".to_owned(),
+            project_type: "Android Studio".to_owned(),
             main_path: "/projects/demo3".to_owned(),
             builds: vec![
                 BuildEntry {
@@ -718,4 +762,10 @@ fn sample_projects() -> Vec<ProjectRecord> {
             edited_on: "2026-04-20".to_owned(),
         },
     ]
+}
+
+fn map_framework_label(stored: &str) -> String {
+    ProjectType::from_storage(stored)
+        .map(|project_type| project_type.label().to_owned())
+        .unwrap_or_else(|| stored.to_owned())
 }
