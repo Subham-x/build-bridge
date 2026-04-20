@@ -226,52 +226,50 @@ impl eframe::App for ProjectDashboardApp {
                 .order(egui::Order::Foreground)
                 .open(&mut open)
                 .collapsible(false)
-                .resizable(false)
-                .movable(false)
+                .resizable(true)
+                .movable(true)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                .default_width(360.0)
+                .default_size(Vec2::new(360.0, 220.0))
+                .min_size(Vec2::new(320.0, 210.0))
                 .show(ctx, |ui| {
-                    ui.label(RichText::new("Templates").strong());
-                    ui.add_space(8.0);
+                    ui.spacing_mut().item_spacing.y = 6.0;
 
-                    ui.vertical_centered(|ui| {
-                        ui.horizontal_centered(|ui| {
-                            let android_response = template_card(
-                                ui,
-                                self.selected_template == TemplateKind::AndroidStudio,
-                                "📱",
-                                "Android Studio",
-                            );
-                            if android_response.clicked() {
-                                self.selected_template = TemplateKind::AndroidStudio;
-                            }
+                    ui.horizontal_centered(|ui| {
+                        let android_response = template_card(
+                            ui,
+                            self.selected_template == TemplateKind::AndroidStudio,
+                            "📱",
+                            "Android Studio",
+                        );
+                        if android_response.clicked() {
+                            self.selected_template = TemplateKind::AndroidStudio;
+                        }
 
-                            ui.add_space(8.0);
+                        ui.add_space(8.0);
 
-                            let flutter_response = template_card(
-                                ui,
-                                self.selected_template == TemplateKind::Flutter,
-                                "🦋",
-                                "Flutter",
-                            );
-                            if flutter_response.clicked() {
-                                self.selected_template = TemplateKind::Flutter;
-                            }
-                        });
+                        let flutter_response = template_card(
+                            ui,
+                            self.selected_template == TemplateKind::Flutter,
+                            "🦋",
+                            "Flutter",
+                        );
+                        if flutter_response.clicked() {
+                            self.selected_template = TemplateKind::Flutter;
+                        }
+                    });
 
-                        ui.add_space(12.0);
-                        ui.horizontal(|ui| {
-                            if ui.button("Cancel").clicked() {
-                                close_modal = true;
-                            }
-                            if ui.add(brand_button("Create")).clicked() {
-                                self.project_name = match self.selected_template {
-                                    TemplateKind::AndroidStudio => "AndroidStudioProject-1".to_owned(),
-                                    TemplateKind::Flutter => "FlutterProject-1".to_owned(),
-                                };
-                                close_modal = true;
-                            }
-                        });
+                    ui.add_space(12.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Cancel").clicked() {
+                            close_modal = true;
+                        }
+                        if ui.add(brand_button("Create")).clicked() {
+                            self.project_name = match self.selected_template {
+                                TemplateKind::AndroidStudio => "AndroidStudioProject-1".to_owned(),
+                                TemplateKind::Flutter => "FlutterProject-1".to_owned(),
+                            };
+                            close_modal = true;
+                        }
                     });
                 });
 
@@ -288,15 +286,31 @@ fn template_card(ui: &mut egui::Ui, selected: bool, icon: &str, label: &str) -> 
     let stroke = if selected {
         egui::Stroke::new(2.0, Color32::from_rgb(2, 110, 193))
     } else {
-        ui.style().visuals.widgets.inactive.bg_stroke
+        egui::Stroke::new(1.0, Color32::from_gray(95))
     };
 
-    let content = format!("{}\n\n{}", icon, label);
     let response = ui.add_sized(
         card_size,
-        Button::new(RichText::new(content).size(16.0))
+        Button::new("")
             .fill(ui.style().visuals.panel_fill)
             .stroke(stroke),
+    );
+
+    let rect = response.rect;
+    let text_color = ui.style().visuals.text_color();
+    ui.painter().text(
+        egui::pos2(rect.center().x, rect.center().y - 20.0),
+        egui::Align2::CENTER_CENTER,
+        icon,
+        egui::FontId::proportional(26.0),
+        text_color,
+    );
+    ui.painter().text(
+        egui::pos2(rect.center().x, rect.center().y + 24.0),
+        egui::Align2::CENTER_CENTER,
+        label,
+        egui::FontId::proportional(16.0),
+        text_color,
     );
 
     if response.hovered() {
