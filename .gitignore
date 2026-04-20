@@ -3,3 +3,8 @@ git-commands.md
 git-remote-rename.bat
 git-set-account.bat
 docs/idea/Names.md
+docs
+
+# Added by cargo
+
+/target

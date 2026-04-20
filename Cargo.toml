@@ -1,0 +1,10 @@
+[package]
+name = "BuildBridge-Serve_Build"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+eframe = { version = "0.33", default-features = true }
+egui = "0.33"
+egui_extras = { version = "0.33", features = ["svg"] }
+window-vibrancy = "0.6"
