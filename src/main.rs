@@ -34,6 +34,7 @@ struct ProjectDashboardApp {
     sidebar_visible: bool,
     sidebar_width: f32,
     sidebar_animated_width: f32,
+    create_modal_open: bool,
     search_text: String,
     project_name: String,
 }
@@ -48,6 +49,7 @@ impl Default for ProjectDashboardApp {
             sidebar_visible: true,
             sidebar_width: 260.0,
             sidebar_animated_width: 260.0,
+            create_modal_open: false,
             search_text: String::new(),
             project_name: "MyAndroidProject-1".to_owned(),
         }
@@ -150,7 +152,9 @@ impl eframe::App for ProjectDashboardApp {
 
                     ui.heading("Your Projects");
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let _ = ui.add(brand_button("Create"));
+                        if ui.add(brand_button("Create")).clicked() {
+                            self.create_modal_open = true;
+                        }
                     });
                 });
                 ui.add_space(8.0);
@@ -191,6 +195,46 @@ impl eframe::App for ProjectDashboardApp {
                 }
             });
         });
+
+        if self.create_modal_open {
+            // Dim the page behind the modal.
+            let overlay_painter = ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Middle,
+                egui::Id::new("create_modal_overlay"),
+            ));
+            overlay_painter.rect_filled(
+                ctx.viewport_rect(),
+                0.0,
+                Color32::from_rgba_premultiplied(0, 0, 0, 160),
+            );
+
+            egui::Window::new("Create Project")
+                .order(egui::Order::Foreground)
+                .collapsible(false)
+                .resizable(false)
+                .movable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .default_width(360.0)
+                .show(ctx, |ui| {
+                    ui.vertical_centered(|ui| {
+                        Frame::group(ui.style()).show(ui, |ui| {
+                            ui.set_min_size(Vec2::new(200.0, 200.0));
+                            ui.vertical_centered(|ui| {
+                                ui.add_space(44.0);
+                                ui.label(RichText::new("📱").size(44.0));
+                                ui.add_space(66.0);
+                                ui.label(RichText::new("Android Studio"));
+                            });
+                        });
+
+                        ui.add_space(12.0);
+                        if ui.add(brand_button("Create")).clicked() {
+                            self.project_name = "AndroidStudioProject-1".to_owned();
+                            self.create_modal_open = false;
+                        }
+                    });
+                });
+        }
     }
 }
 
