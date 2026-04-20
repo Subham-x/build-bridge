@@ -2,7 +2,8 @@ use chrono::Local;
 use directories::ProjectDirs;
 use eframe::egui::{
     self, Align, Button, Color32, ComboBox, CornerRadius, Frame, Image, ImageSource, Layout,
-    Margin, RichText, ScrollArea, Stroke, StrokeKind, ThemePreference, TextEdit, Vec2,
+    Margin, RichText, ScrollArea, Stroke, StrokeKind,
+    ThemePreference, TextEdit, TopBottomPanel, Vec2,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -12,8 +13,8 @@ use std::path::{Path, PathBuf};
 fn main() -> Result<(), eframe::Error> {
     let viewport = egui::ViewportBuilder::default()
         .with_title("BuildBridge")
-        .with_inner_size([1024.0, 768.0])
-        .with_min_inner_size([920.0, 620.0])
+        .with_inner_size([1024.0, 538.0])
+        .with_min_inner_size([920.0, 434.0])
         .with_resizable(true)
         .with_decorations(true);
 
@@ -56,6 +57,8 @@ struct ProjectDashboardApp {
     modal_mode: ModalMode,
     archive_select_mode: bool,
     archive_selected: HashSet<String>,
+    bin_select_mode: bool,
+    bin_selected: HashSet<String>,
     empty_bin_confirm_open: bool,
 }
 
@@ -86,6 +89,8 @@ impl Default for ProjectDashboardApp {
             modal_mode: ModalMode::Create,
             archive_select_mode: false,
             archive_selected: HashSet::new(),
+            bin_select_mode: false,
+            bin_selected: HashSet::new(),
             empty_bin_confirm_open: false,
         }
     }
@@ -315,6 +320,16 @@ impl eframe::App for ProjectDashboardApp {
             });
         }
 
+        TopBottomPanel::bottom("status_bar")
+            .exact_height(24.0)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    if let Some(message) = &self.status_message {
+                        ui.colored_label(Color32::from_rgb(2, 110, 193), message);
+                    }
+                });
+            });
+
         egui::CentralPanel::default().show(ctx, |ui| {
             Frame::new().inner_margin(Margin::same(12)).show(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -336,25 +351,39 @@ impl eframe::App for ProjectDashboardApp {
                     };
                     ui.heading(heading);
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if self.nav == Nav::Bin {
-                            if ui.button("Empty Bin").clicked() {
-                                self.empty_bin_confirm_open = true;
-                            }
-                        } else if self.nav == Nav::Archived {
-                            let select_label = if self.archive_select_mode { "Done" } else { "Select" };
-                            if ui.button(select_label).clicked() {
-                                self.archive_select_mode = !self.archive_select_mode;
-                                if !self.archive_select_mode {
-                                    self.archive_selected.clear();
+                        match self.nav {
+                            Nav::Bin => {
+                                let select_label = if self.bin_select_mode { "Done" } else { "Select" };
+                                if ui.button(select_label).clicked() {
+                                    self.bin_select_mode = !self.bin_select_mode;
+                                    if !self.bin_select_mode {
+                                        self.bin_selected.clear();
+                                    }
+                                }
+                                if !self.bin_select_mode && ui.button("Empty Bin").clicked() {
+                                    self.empty_bin_confirm_open = true;
                                 }
                             }
-                        } else if ui.add(brand_button("Create")).clicked() {
-                            self.form_error = None;
-                            self.create_form = CreateProjectForm::default();
-                            self.create_modal_step = CreateModalStep::Framework;
-                            self.selected_framework = self.create_form.project_type;
-                            self.modal_mode = ModalMode::Create;
-                            self.create_modal_open = true;
+                            Nav::Archived => {
+                                let select_label = if self.archive_select_mode { "Done" } else { "Select" };
+                                if ui.button(select_label).clicked() {
+                                    self.archive_select_mode = !self.archive_select_mode;
+                                    if !self.archive_select_mode {
+                                        self.archive_selected.clear();
+                                    }
+                                }
+                            }
+                            Nav::Home => {
+                                if ui.add(brand_button("Create")).clicked() {
+                                    self.form_error = None;
+                                    self.create_form = CreateProjectForm::default();
+                                    self.create_modal_step = CreateModalStep::Framework;
+                                    self.selected_framework = self.create_form.project_type;
+                                    self.modal_mode = ModalMode::Create;
+                                    self.create_modal_open = true;
+                                }
+                            }
+                            Nav::About | Nav::Feedback | Nav::PrivacyPolicy => {}
                         }
                     });
                 });
@@ -403,25 +432,126 @@ impl eframe::App for ProjectDashboardApp {
                     );
                 });
 
+                if self.nav == Nav::Archived && self.archive_select_mode {
+                    ui.add_space(6.0);
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button("Select all").clicked() {
+                            let names: HashSet<String> = self
+                                .filtered_projects()
+                                .into_iter()
+                                .map(|p| p.name)
+                                .collect();
+                            self.archive_selected = names;
+                        }
+                        if ui.button("Unselect all").clicked() {
+                            self.archive_selected.clear();
+                        }
+                        if ui.button("Bin").clicked() {
+                            let selected = self.archive_selected.clone();
+                            match self.bulk_bin_projects(&selected) {
+                                Ok(count) => {
+                                    self.status_message = Some(format!("Moved {count} project(s) to Bin."));
+                                    self.archive_selected.clear();
+                                }
+                                Err(err) => {
+                                    self.project_action_error = Some(err);
+                                }
+                            }
+                        }
+                        if ui.add(brand_button("Unarchive")).clicked() {
+                            let selected = self.archive_selected.clone();
+                            match self.bulk_unarchive_projects(&selected) {
+                                Ok(count) => {
+                                    self.status_message = Some(format!("Unarchived {count} project(s)."));
+                                    self.archive_selected.clear();
+                                }
+                                Err(err) => {
+                                    self.project_action_error = Some(err);
+                                }
+                            }
+                        }
+                    });
+                }
+
+                if self.nav == Nav::Bin && self.bin_select_mode {
+                    ui.add_space(6.0);
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button("Select all").clicked() {
+                            let names: HashSet<String> = self
+                                .filtered_projects()
+                                .into_iter()
+                                .map(|p| p.name)
+                                .collect();
+                            self.bin_selected = names;
+                        }
+                        if ui.button("Unselect all").clicked() {
+                            self.bin_selected.clear();
+                        }
+                        if ui
+                            .add(Button::new(RichText::new("Permanent delete").color(Color32::from_rgb(229, 57, 53))))
+                            .clicked()
+                        {
+                            let selected = self.bin_selected.clone();
+                            match self.bulk_permanent_delete_projects(&selected) {
+                                Ok(count) => {
+                                    self.status_message = Some(format!("Permanently deleted {count} project(s)."));
+                                    self.bin_selected.clear();
+                                }
+                                Err(err) => {
+                                    self.project_action_error = Some(err);
+                                }
+                            }
+                        }
+                        if ui.add(brand_button("Restore")).clicked() {
+                            let selected = self.bin_selected.clone();
+                            match self.bulk_restore_projects(&selected) {
+                                Ok(count) => {
+                                    self.status_message = Some(format!("Restored {count} project(s)."));
+                                    self.bin_selected.clear();
+                                }
+                                Err(err) => {
+                                    self.project_action_error = Some(err);
+                                }
+                            }
+                        }
+                    });
+                }
+
                 ui.add_space(8.0);
                 match self.nav {
                     Nav::Home | Nav::Archived | Nav::Bin => {
-                        ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
+                        let list_height = (ui.available_height() - 6.0).max(180.0);
+                        ScrollArea::vertical().max_height(list_height).show(ui, |ui| {
                             for project in self.filtered_projects() {
                                 ui.group(|ui| {
                                     ui.horizontal(|ui| {
-                                        if self.nav == Nav::Archived && self.archive_select_mode {
-                                            let mut checked = self.archive_selected.contains(&project.name);
+                                        if (self.nav == Nav::Archived && self.archive_select_mode)
+                                            || (self.nav == Nav::Bin && self.bin_select_mode)
+                                        {
+                                            let mut checked = if self.nav == Nav::Archived {
+                                                self.archive_selected.contains(&project.name)
+                                            } else {
+                                                self.bin_selected.contains(&project.name)
+                                            };
                                             if ui.checkbox(&mut checked, "").changed() {
-                                                if checked {
-                                                    self.archive_selected.insert(project.name.clone());
+                                                if self.nav == Nav::Archived {
+                                                    if checked {
+                                                        self.archive_selected.insert(project.name.clone());
+                                                    } else {
+                                                        self.archive_selected.remove(&project.name);
+                                                    }
                                                 } else {
-                                                    self.archive_selected.remove(&project.name);
+                                                    if checked {
+                                                        self.bin_selected.insert(project.name.clone());
+                                                    } else {
+                                                        self.bin_selected.remove(&project.name);
+                                                    }
                                                 }
                                             }
                                         }
 
-                                        ui.label(&project.name);
+                                        let name_color = if dark { Color32::WHITE } else { Color32::BLACK };
+                                        ui.label(RichText::new(&project.name).strong().color(name_color));
 
                                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                             ui.menu_image_button(icon_image(themed_icon(dark, IconKind::MoreVert), 16.0), |ui| {
@@ -499,7 +629,20 @@ impl eframe::App for ProjectDashboardApp {
                                                 }
 
                                             });
-                                            ui.add(icon_image(themed_icon(dark, IconKind::ActionEdit), 14.0));
+                                            if ui
+                                                .add(
+                                                    icon_button(themed_icon(dark, IconKind::Broadcast), 14.0)
+                                                        .frame(true)
+                                                        .min_size(Vec2::new(28.0, 24.0)),
+                                                )
+                                                .on_hover_text("Serve settings")
+                                                .clicked()
+                                            {
+                                                self.status_message = Some(format!(
+                                                    "Serve settings clicked for '{}'.",
+                                                    project.name
+                                                ));
+                                            }
                                             ui.add_space(2.0);
                                             if self.nav == Nav::Archived {
                                                 if ui.add(brand_button("Unarchive")).clicked() {
@@ -538,10 +681,6 @@ impl eframe::App for ProjectDashboardApp {
                     Nav::PrivacyPolicy => {
                         ui.label(support_page_body(SupportPage::PrivacyPolicy));
                     }
-                }
-
-                if let Some(message) = &self.status_message {
-                    ui.colored_label(Color32::from_rgb(130, 210, 130), message);
                 }
 
                 if let Some(action_error) = &self.project_action_error {
@@ -634,6 +773,11 @@ impl eframe::App for ProjectDashboardApp {
 
             let mut close_modal = false;
             let mut open = self.create_modal_open;
+            let modal_size = if self.create_modal_step == CreateModalStep::Framework {
+                Vec2::new(360.0, 212.0)
+            } else {
+                Vec2::new(360.0, 250.0)
+            };
             egui::Window::new("Create Project")
                 .order(egui::Order::Foreground)
                 .open(&mut open)
@@ -641,10 +785,11 @@ impl eframe::App for ProjectDashboardApp {
                 .resizable(false)
                 .movable(true)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                .default_size(Vec2::new(360.0, 220.0))
-                .min_size(Vec2::new(320.0, 210.0))
+                .default_size(modal_size)
+                .min_size(modal_size)
+                .max_size(modal_size)
                 .show(ctx, |ui| {
-                    ui.spacing_mut().item_spacing.y = 8.0;
+                    ui.spacing_mut().item_spacing.y = 6.0;
 
                     match self.create_modal_step {
                         CreateModalStep::Framework => {
@@ -673,12 +818,12 @@ impl eframe::App for ProjectDashboardApp {
                                 }
                             });
 
-                            ui.add_space(10.0);
+                            ui.add_space(4.0);
                             ui.horizontal(|ui| {
                                 if ui.button("Cancel").clicked() {
                                     close_modal = true;
                                 }
-                                if ui.button("Next").clicked() {
+                                if ui.add(brand_button("Next")).clicked() {
                                     self.create_form.project_type = self.selected_framework;
                                     self.create_modal_step = CreateModalStep::Form;
                                 }
@@ -981,6 +1126,79 @@ impl ProjectDashboardApp {
         Ok(())
     }
 
+    fn bulk_bin_projects(&mut self, project_names: &HashSet<String>) -> Result<usize, String> {
+        if project_names.is_empty() {
+            return Ok(0);
+        }
+
+        let today = current_date();
+        let mut count = 0;
+        for project in &mut self.projects {
+            if project_names.contains(&project.name) {
+                project.status = "deleted".to_owned();
+                project.edited_on = today.clone();
+                count += 1;
+            }
+        }
+
+        self.persist_projects()?;
+        Ok(count)
+    }
+
+    fn bulk_unarchive_projects(&mut self, project_names: &HashSet<String>) -> Result<usize, String> {
+        if project_names.is_empty() {
+            return Ok(0);
+        }
+
+        let today = current_date();
+        let mut count = 0;
+        for project in &mut self.projects {
+            if project_names.contains(&project.name) {
+                project.status = "active".to_owned();
+                project.edited_on = today.clone();
+                count += 1;
+            }
+        }
+
+        self.persist_projects()?;
+        Ok(count)
+    }
+
+    fn bulk_restore_projects(&mut self, project_names: &HashSet<String>) -> Result<usize, String> {
+        if project_names.is_empty() {
+            return Ok(0);
+        }
+
+        let today = current_date();
+        let mut count = 0;
+        for project in &mut self.projects {
+            if project_names.contains(&project.name) {
+                project.status = "active".to_owned();
+                project.edited_on = today.clone();
+                count += 1;
+            }
+        }
+
+        self.persist_projects()?;
+        Ok(count)
+    }
+
+    fn bulk_permanent_delete_projects(
+        &mut self,
+        project_names: &HashSet<String>,
+    ) -> Result<usize, String> {
+        if project_names.is_empty() {
+            return Ok(0);
+        }
+
+        let before = self.projects.len();
+        self.projects
+            .retain(|project| !project_names.contains(&project.name));
+        let count = before.saturating_sub(self.projects.len());
+        self.persist_projects()?;
+        Ok(count)
+    }
+
     fn empty_bin(&mut self) -> Result<(), String> {
         let before = self.projects.len();
         self.projects.retain(|project| project.status != "deleted");
@@ -1018,7 +1236,7 @@ fn support_page_row(ui: &mut egui::Ui, dark: bool, icon: IconKind, label: &str) 
     ui.horizontal(|ui| {
         ui.add(icon_image(themed_icon(dark, icon), 16.0));
         ui.add(
-            Button::new(format!("{label}  >"))
+            Button::new(label)
                 .frame(false)
                 .fill(Color32::TRANSPARENT),
         )
@@ -1048,6 +1266,7 @@ enum IconKind {
     About,
     Feedback,
     Privacy,
+    Broadcast,
     ActionEdit,
     ActionArchive,
     ActionDelete,
@@ -1079,6 +1298,8 @@ fn themed_icon(dark: bool, icon: IconKind) -> ImageSource<'static> {
         (false, IconKind::Feedback) => egui::include_image!("../assets/icons/feedback_light.svg"),
         (true, IconKind::Privacy) => egui::include_image!("../assets/icons/privacy_dark.svg"),
         (false, IconKind::Privacy) => egui::include_image!("../assets/icons/privacy_light.svg"),
+        (true, IconKind::Broadcast) => egui::include_image!("../assets/icons/broadcast_dark.svg"),
+        (false, IconKind::Broadcast) => egui::include_image!("../assets/icons/broadcast_light.svg"),
         (true, IconKind::ActionEdit) => egui::include_image!("../assets/icons/action_edit_dark.svg"),
         (false, IconKind::ActionEdit) => egui::include_image!("../assets/icons/action_edit_light.svg"),
         (true, IconKind::ActionArchive) => egui::include_image!("../assets/icons/action_archive_dark.svg"),
