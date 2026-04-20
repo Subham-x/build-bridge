@@ -292,7 +292,10 @@ impl eframe::App for ProjectDashboardApp {
                     nav_item(ui, dark, &mut self.nav, Nav::Bin, "Bin", IconKind::Bin);
                     ui.horizontal(|ui| {
                         ui.add(icon_image(themed_icon(dark, IconKind::Theme), 18.0));
-                        if ui.button("Theme").clicked() {
+                        if ui
+                            .add(Button::new("Theme").frame(false).fill(Color32::TRANSPARENT))
+                            .clicked()
+                        {
                             self.theme_popup_open = true;
                         }
                     });
@@ -421,7 +424,7 @@ impl eframe::App for ProjectDashboardApp {
                                         ui.label(&project.name);
 
                                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                            ui.menu_button(RichText::new("⋮").size(18.0), |ui| {
+                                            ui.menu_image_button(icon_image(themed_icon(dark, IconKind::MoreVert), 16.0), |ui| {
                                                 ui.horizontal(|ui| {
                                                     ui.add(icon_image(themed_icon(dark, IconKind::ActionEdit), 14.0));
                                                     if ui.button("Edit").clicked() {
@@ -1036,6 +1039,7 @@ enum IconKind {
     Home,
     Archive,
     Bin,
+    MoreVert,
     Theme,
     PanelHide,
     PanelShow,
@@ -1057,6 +1061,8 @@ fn themed_icon(dark: bool, icon: IconKind) -> ImageSource<'static> {
         (false, IconKind::Archive) => egui::include_image!("../assets/icons/archive_light.svg"),
         (true, IconKind::Bin) => egui::include_image!("../assets/icons/bin_dark.svg"),
         (false, IconKind::Bin) => egui::include_image!("../assets/icons/bin_light.svg"),
+        (true, IconKind::MoreVert) => egui::include_image!("../assets/icons/more_vert_dark.svg"),
+        (false, IconKind::MoreVert) => egui::include_image!("../assets/icons/more_vert_light.svg"),
         (true, IconKind::Theme) => egui::include_image!("../assets/icons/theme_dark.svg"),
         (false, IconKind::Theme) => egui::include_image!("../assets/icons/theme_light.svg"),
         (true, IconKind::PanelHide) => egui::include_image!("../assets/icons/panel_hide_dark.svg"),
