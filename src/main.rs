@@ -5,6 +5,7 @@ use eframe::egui::{
     Margin, RichText, ScrollArea, Stroke, StrokeKind, ThemePreference, TextEdit, Vec2,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -53,6 +54,9 @@ struct ProjectDashboardApp {
     theme_mode: AppThemeMode,
     project_action_error: Option<String>,
     modal_mode: ModalMode,
+    archive_select_mode: bool,
+    archive_selected: HashSet<String>,
+    empty_bin_confirm_open: bool,
 }
 
 impl Default for ProjectDashboardApp {
@@ -80,6 +84,9 @@ impl Default for ProjectDashboardApp {
             theme_mode: AppThemeMode::System,
             project_action_error: None,
             modal_mode: ModalMode::Create,
+            archive_select_mode: false,
+            archive_selected: HashSet::new(),
+            empty_bin_confirm_open: false,
         }
     }
 }
@@ -88,6 +95,7 @@ impl Default for ProjectDashboardApp {
 enum Nav {
     Home,
     Archived,
+    Bin,
     About,
     Feedback,
     PrivacyPolicy,
@@ -281,6 +289,7 @@ impl eframe::App for ProjectDashboardApp {
                         "Archived",
                         IconKind::Archive,
                     );
+                    nav_item(ui, dark, &mut self.nav, Nav::Bin, "Bin", IconKind::Bin);
                     ui.horizontal(|ui| {
                         ui.add(icon_image(themed_icon(dark, IconKind::Theme), 18.0));
                         if ui.button("Theme").clicked() {
@@ -317,9 +326,26 @@ impl eframe::App for ProjectDashboardApp {
                         ui.add_space(8.0);
                     }
 
-                    ui.heading("Your Projects");
+                    let heading = if self.nav == Nav::Bin {
+                        "Bin"
+                    } else {
+                        "Your Projects"
+                    };
+                    ui.heading(heading);
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.add(brand_button("Create")).clicked() {
+                        if self.nav == Nav::Bin {
+                            if ui.button("Empty Bin").clicked() {
+                                self.empty_bin_confirm_open = true;
+                            }
+                        } else if self.nav == Nav::Archived {
+                            let select_label = if self.archive_select_mode { "Done" } else { "Select" };
+                            if ui.button(select_label).clicked() {
+                                self.archive_select_mode = !self.archive_select_mode;
+                                if !self.archive_select_mode {
+                                    self.archive_selected.clear();
+                                }
+                            }
+                        } else if ui.add(brand_button("Create")).clicked() {
                             self.form_error = None;
                             self.create_form = CreateProjectForm::default();
                             self.create_modal_step = CreateModalStep::Framework;
@@ -376,15 +402,26 @@ impl eframe::App for ProjectDashboardApp {
 
                 ui.add_space(8.0);
                 match self.nav {
-                    Nav::Home | Nav::Archived => {
+                    Nav::Home | Nav::Archived | Nav::Bin => {
                         ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
                             for project in self.filtered_projects() {
                                 ui.group(|ui| {
                                     ui.horizontal(|ui| {
+                                        if self.nav == Nav::Archived && self.archive_select_mode {
+                                            let mut checked = self.archive_selected.contains(&project.name);
+                                            if ui.checkbox(&mut checked, "").changed() {
+                                                if checked {
+                                                    self.archive_selected.insert(project.name.clone());
+                                                } else {
+                                                    self.archive_selected.remove(&project.name);
+                                                }
+                                            }
+                                        }
+
                                         ui.label(&project.name);
 
                                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                            ui.menu_button("⋯", |ui| {
+                                            ui.menu_button(RichText::new("⋮").size(18.0), |ui| {
                                                 ui.horizontal(|ui| {
                                                     ui.add(icon_image(themed_icon(dark, IconKind::ActionEdit), 14.0));
                                                     if ui.button("Edit").clicked() {
@@ -392,30 +429,90 @@ impl eframe::App for ProjectDashboardApp {
                                                         ui.close();
                                                     }
                                                 });
-                                                ui.horizontal(|ui| {
-                                                    ui.add(icon_image(themed_icon(dark, IconKind::ActionArchive), 14.0));
-                                                    if ui.button("Archive").clicked() {
-                                                        if let Err(err) = self.archive_project(&project.name) {
-                                                            self.project_action_error = Some(err);
+                                                if self.nav != Nav::Archived {
+                                                    ui.horizontal(|ui| {
+                                                        ui.add(icon_image(themed_icon(dark, IconKind::ActionArchive), 14.0));
+                                                        if ui.button("Archive").clicked() {
+                                                            if let Err(err) = self.archive_project(&project.name) {
+                                                                self.project_action_error = Some(err);
+                                                            }
+                                                            ui.close();
                                                         }
-                                                        ui.close();
-                                                    }
-                                                });
-                                                ui.horizontal(|ui| {
-                                                    ui.add(icon_image(themed_icon(dark, IconKind::ActionDelete), 14.0));
-                                                    if ui
-                                                        .add(Button::new(RichText::new("Delete").color(Color32::from_rgb(229, 57, 53))).frame(false))
-                                                        .clicked()
-                                                    {
-                                                        if let Err(err) = self.delete_project(&project.name) {
-                                                            self.project_action_error = Some(err);
+                                                    });
+                                                } else {
+                                                    ui.horizontal(|ui| {
+                                                        ui.add(icon_image(themed_icon(dark, IconKind::ActionArchive), 14.0));
+                                                        if ui.button("Unarchive").clicked() {
+                                                            if let Err(err) = self.unarchive_project(&project.name) {
+                                                                self.project_action_error = Some(err);
+                                                            }
+                                                            ui.close();
                                                         }
-                                                        ui.close();
-                                                    }
-                                                });
+                                                    });
+                                                }
+
+                                                if self.nav != Nav::Bin {
+                                                    ui.horizontal(|ui| {
+                                                        ui.add(icon_image(themed_icon(dark, IconKind::Bin), 14.0));
+                                                        let bin_button = if self.nav == Nav::Home {
+                                                            Button::new(
+                                                                RichText::new("Bin").color(Color32::from_rgb(229, 57, 53)),
+                                                            )
+                                                        } else {
+                                                            Button::new("Bin")
+                                                        };
+                                                        if ui.add(bin_button).clicked()
+                                                        {
+                                                            if let Err(err) = self.bin_project(&project.name) {
+                                                                self.project_action_error = Some(err);
+                                                            }
+                                                            ui.close();
+                                                        }
+                                                    });
+                                                }
+
+                                                if self.nav == Nav::Bin {
+                                                    ui.horizontal(|ui| {
+                                                        ui.add(icon_image(themed_icon(dark, IconKind::ActionArchive), 14.0));
+                                                        if ui.button("Restore").clicked() {
+                                                            if let Err(err) = self.restore_project(&project.name) {
+                                                                self.project_action_error = Some(err);
+                                                            }
+                                                            ui.close();
+                                                        }
+                                                    });
+                                                    ui.horizontal(|ui| {
+                                                        ui.add(icon_image(themed_icon(dark, IconKind::ActionDelete), 14.0));
+                                                        if ui
+                                                            .add(Button::new(RichText::new("Permanent Delete").color(Color32::from_rgb(229, 57, 53))))
+                                                            .clicked()
+                                                        {
+                                                            if let Err(err) = self.permanent_delete_project(&project.name) {
+                                                                self.project_action_error = Some(err);
+                                                            }
+                                                            ui.close();
+                                                        }
+                                                    });
+                                                }
+
                                             });
+                                            ui.add(icon_image(themed_icon(dark, IconKind::ActionEdit), 14.0));
                                             ui.add_space(2.0);
-                                            let _ = ui.add(brand_button("Serve"));
+                                            if self.nav == Nav::Archived {
+                                                if ui.add(brand_button("Unarchive")).clicked() {
+                                                    if let Err(err) = self.unarchive_project(&project.name) {
+                                                        self.project_action_error = Some(err);
+                                                    }
+                                                }
+                                            } else if self.nav == Nav::Bin {
+                                                if ui.add(brand_button("Restore")).clicked() {
+                                                    if let Err(err) = self.restore_project(&project.name) {
+                                                        self.project_action_error = Some(err);
+                                                    }
+                                                }
+                                            } else if project.status == "active" {
+                                                let _ = ui.add(brand_button("Serve"));
+                                            }
                                         });
                                     });
                                     ui.horizontal_wrapped(|ui| {
@@ -657,6 +754,42 @@ impl eframe::App for ProjectDashboardApp {
                 self.modal_mode = ModalMode::Create;
             }
         }
+
+        if self.empty_bin_confirm_open {
+            let mut open = self.empty_bin_confirm_open;
+            let mut confirm_empty = false;
+            let mut close_confirm = false;
+            egui::Window::new("Confirm Empty Bin")
+                .collapsible(false)
+                .resizable(false)
+                .open(&mut open)
+                .default_size(Vec2::new(420.0, 120.0))
+                .show(ctx, |ui| {
+                    ui.label("This will permanently delete all projects currently in Bin. This action cannot be undone.");
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Yes").clicked() {
+                            confirm_empty = true;
+                        }
+                        if ui.add(brand_button("No")).clicked() {
+                            close_confirm = true;
+                        }
+                    });
+                });
+
+            if confirm_empty {
+                if let Err(err) = self.empty_bin() {
+                    self.project_action_error = Some(err);
+                }
+                open = false;
+            }
+
+            if close_confirm {
+                open = false;
+            }
+
+            self.empty_bin_confirm_open = open;
+        }
     }
 }
 
@@ -690,8 +823,9 @@ impl ProjectDashboardApp {
             .iter()
             .filter(|project| {
                 let nav_match = match self.nav {
-                    Nav::Home => project.status != "archived",
+                    Nav::Home => project.status == "active",
                     Nav::Archived => project.status == "archived",
+                    Nav::Bin => project.status == "deleted",
                     Nav::About | Nav::Feedback | Nav::PrivacyPolicy => false,
                 };
                 let framework = map_framework_label(&project.project_type).to_lowercase();
@@ -794,14 +928,66 @@ impl ProjectDashboardApp {
         Ok(())
     }
 
-    fn delete_project(&mut self, project_name: &str) -> Result<(), String> {
+    fn unarchive_project(&mut self, project_name: &str) -> Result<(), String> {
+        let project = self
+            .projects
+            .iter_mut()
+            .find(|project| project.name == project_name)
+            .ok_or_else(|| format!("Project '{project_name}' not found."))?;
+        project.status = "active".to_owned();
+        project.edited_on = current_date();
+        self.persist_projects()?;
+        self.status_message = Some(format!("Project '{project_name}' unarchived."));
+        Ok(())
+    }
+
+    fn bin_project(&mut self, project_name: &str) -> Result<(), String> {
+        let project = self
+            .projects
+            .iter_mut()
+            .find(|project| project.name == project_name)
+            .ok_or_else(|| format!("Project '{project_name}' not found."))?;
+        project.status = "deleted".to_owned();
+        project.edited_on = current_date();
+        self.persist_projects()?;
+        self.status_message = Some(format!("Project '{project_name}' moved to Bin."));
+        Ok(())
+    }
+
+    fn restore_project(&mut self, project_name: &str) -> Result<(), String> {
+        let project = self
+            .projects
+            .iter_mut()
+            .find(|project| project.name == project_name)
+            .ok_or_else(|| format!("Project '{project_name}' not found."))?;
+        project.status = "active".to_owned();
+        project.edited_on = current_date();
+        self.persist_projects()?;
+        self.status_message = Some(format!("Project '{project_name}' restored from Bin."));
+        Ok(())
+    }
+
+    fn permanent_delete_project(&mut self, project_name: &str) -> Result<(), String> {
         let before = self.projects.len();
         self.projects.retain(|project| project.name != project_name);
         if self.projects.len() == before {
             return Err(format!("Project '{project_name}' not found."));
         }
         self.persist_projects()?;
-        self.status_message = Some(format!("Project '{project_name}' deleted."));
+        self.status_message = Some(format!("Project '{project_name}' permanently deleted."));
+        Ok(())
+    }
+
+    fn empty_bin(&mut self) -> Result<(), String> {
+        let before = self.projects.len();
+        self.projects.retain(|project| project.status != "deleted");
+        let removed = before.saturating_sub(self.projects.len());
+        if removed == 0 {
+            self.status_message = Some("Bin is already empty.".to_owned());
+            return Ok(());
+        }
+        self.persist_projects()?;
+        self.status_message = Some(format!("Removed {removed} project(s) from Bin."));
         Ok(())
     }
 
@@ -849,6 +1035,7 @@ fn icon_image(source: ImageSource<'static>, size: f32) -> Image<'static> {
 enum IconKind {
     Home,
     Archive,
+    Bin,
     Theme,
     PanelHide,
     PanelShow,
@@ -868,6 +1055,8 @@ fn themed_icon(dark: bool, icon: IconKind) -> ImageSource<'static> {
         (false, IconKind::Home) => egui::include_image!("../assets/icons/home_light.svg"),
         (true, IconKind::Archive) => egui::include_image!("../assets/icons/archive_dark.svg"),
         (false, IconKind::Archive) => egui::include_image!("../assets/icons/archive_light.svg"),
+        (true, IconKind::Bin) => egui::include_image!("../assets/icons/bin_dark.svg"),
+        (false, IconKind::Bin) => egui::include_image!("../assets/icons/bin_light.svg"),
         (true, IconKind::Theme) => egui::include_image!("../assets/icons/theme_dark.svg"),
         (false, IconKind::Theme) => egui::include_image!("../assets/icons/theme_light.svg"),
         (true, IconKind::PanelHide) => egui::include_image!("../assets/icons/panel_hide_dark.svg"),
