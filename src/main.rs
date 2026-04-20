@@ -1,8 +1,8 @@
 use chrono::Local;
 use directories::ProjectDirs;
 use eframe::egui::{
-    self, Align, Button, Color32, ComboBox, Frame, Image, ImageSource, Layout, Margin,
-    RichText, ScrollArea, ThemePreference, TextEdit, Vec2,
+    self, Align, Button, Color32, ComboBox, CornerRadius, Frame, Image, ImageSource, Layout,
+    Margin, RichText, ScrollArea, Stroke, StrokeKind, ThemePreference, TextEdit, Vec2,
 };
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -50,6 +50,9 @@ struct ProjectDashboardApp {
     status_message: Option<String>,
     storage_error: Option<String>,
     theme_popup_open: bool,
+    theme_mode: AppThemeMode,
+    project_action_error: Option<String>,
+    modal_mode: ModalMode,
 }
 
 impl Default for ProjectDashboardApp {
@@ -74,6 +77,9 @@ impl Default for ProjectDashboardApp {
             status_message: None,
             storage_error,
             theme_popup_open: false,
+            theme_mode: AppThemeMode::System,
+            project_action_error: None,
+            modal_mode: ModalMode::Create,
         }
     }
 }
@@ -82,6 +88,9 @@ impl Default for ProjectDashboardApp {
 enum Nav {
     Home,
     Archived,
+    About,
+    Feedback,
+    PrivacyPolicy,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -97,6 +106,36 @@ enum ProjectType {
 enum CreateModalStep {
     Framework,
     Form,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AppThemeMode {
+    System,
+    Dark,
+    Light,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SupportPage {
+    About,
+    Feedback,
+    PrivacyPolicy,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+enum ModalMode {
+    Create,
+    Edit { original_name: String },
+}
+
+impl AppThemeMode {
+    fn to_pref(self) -> ThemePreference {
+        match self {
+            Self::System => ThemePreference::System,
+            Self::Dark => ThemePreference::Dark,
+            Self::Light => ThemePreference::Light,
+        }
+    }
 }
 
 impl ProjectType {
@@ -174,6 +213,8 @@ impl eframe::App for ProjectDashboardApp {
             ctx.set_zoom_factor(1.20);
         }
 
+        ctx.set_theme(self.theme_mode.to_pref());
+
         if self.create_modal_open && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.create_modal_open = false;
         }
@@ -230,6 +271,7 @@ impl eframe::App for ProjectDashboardApp {
                 ui.add_space(8.0);
 
                 if self.sidebar_animated_width >= 120.0 {
+                    ui.label("General");
                     nav_item(ui, dark, &mut self.nav, Nav::Home, "Home", IconKind::Home);
                     nav_item(
                         ui,
@@ -245,6 +287,18 @@ impl eframe::App for ProjectDashboardApp {
                             self.theme_popup_open = true;
                         }
                     });
+
+                    ui.add_space(8.0);
+                    ui.label("Support");
+                    if support_page_row(ui, dark, IconKind::About, "About").clicked() {
+                        self.nav = Nav::About;
+                    }
+                    if support_page_row(ui, dark, IconKind::Feedback, "Feedback").clicked() {
+                        self.nav = Nav::Feedback;
+                    }
+                    if support_page_row(ui, dark, IconKind::Privacy, "Privacy Policy").clicked() {
+                        self.nav = Nav::PrivacyPolicy;
+                    }
                 }
             });
         }
@@ -270,6 +324,7 @@ impl eframe::App for ProjectDashboardApp {
                             self.create_form = CreateProjectForm::default();
                             self.create_modal_step = CreateModalStep::Framework;
                             self.selected_framework = self.create_form.project_type;
+                            self.modal_mode = ModalMode::Create;
                             self.create_modal_open = true;
                         }
                     });
@@ -283,9 +338,35 @@ impl eframe::App for ProjectDashboardApp {
                     let search_width = (ui.available_width() - search_height - space).max(120.0);
 
                     let search = TextEdit::singleline(&mut self.search_text)
+                        .frame(false)
                         .hint_text("Search")
                         .desired_width(search_width);
-                    let _ = ui.add_sized([search_width, search_height], search);
+                    let search_response = ui.add_sized([search_width, search_height], search);
+                    ui.painter().rect_stroke(
+                        search_response.rect,
+                        CornerRadius::same(8),
+                        Stroke::new(1.0, Color32::from_gray(95)),
+                        StrokeKind::Outside,
+                    );
+
+                    if search_response.has_focus() && ctx.input(|i| i.key_pressed(egui::Key::Delete)) {
+                        self.search_text.clear();
+                    }
+
+                    if !self.search_text.is_empty() {
+                        let clear_size = (search_height - 6.0).max(16.0);
+                        let clear_rect = egui::Rect::from_min_size(
+                            egui::pos2(
+                                search_response.rect.right() - clear_size - 4.0,
+                                search_response.rect.center().y - clear_size * 0.5,
+                            ),
+                            egui::Vec2::splat(clear_size),
+                        );
+                        let clear_response = ui.put(clear_rect, icon_button(themed_icon(dark, IconKind::Clear), clear_size).frame(false));
+                        if clear_response.clicked() {
+                            self.search_text.clear();
+                        }
+                    }
 
                     let _ = ui.add(
                         icon_button(themed_icon(dark, IconKind::Sort), search_height)
@@ -294,31 +375,77 @@ impl eframe::App for ProjectDashboardApp {
                 });
 
                 ui.add_space(8.0);
-                ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
-                    for project in self.filtered_projects() {
-                        ui.group(|ui| {
-                            ui.horizontal(|ui| {
-                                ui.label(&project.name);
+                match self.nav {
+                    Nav::Home | Nav::Archived => {
+                        ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
+                            for project in self.filtered_projects() {
+                                ui.group(|ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.label(&project.name);
 
-                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    let _ = ui.add(icon_button(themed_icon(dark, IconKind::Edit), 22.0));
-                                    ui.add_space(4.0);
-                                    let _ = ui.add(brand_button("Serve"));
+                                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                            ui.menu_button("⋯", |ui| {
+                                                ui.horizontal(|ui| {
+                                                    ui.add(icon_image(themed_icon(dark, IconKind::ActionEdit), 14.0));
+                                                    if ui.button("Edit").clicked() {
+                                                        self.begin_edit_project(&project.name);
+                                                        ui.close();
+                                                    }
+                                                });
+                                                ui.horizontal(|ui| {
+                                                    ui.add(icon_image(themed_icon(dark, IconKind::ActionArchive), 14.0));
+                                                    if ui.button("Archive").clicked() {
+                                                        if let Err(err) = self.archive_project(&project.name) {
+                                                            self.project_action_error = Some(err);
+                                                        }
+                                                        ui.close();
+                                                    }
+                                                });
+                                                ui.horizontal(|ui| {
+                                                    ui.add(icon_image(themed_icon(dark, IconKind::ActionDelete), 14.0));
+                                                    if ui
+                                                        .add(Button::new(RichText::new("Delete").color(Color32::from_rgb(229, 57, 53))).frame(false))
+                                                        .clicked()
+                                                    {
+                                                        if let Err(err) = self.delete_project(&project.name) {
+                                                            self.project_action_error = Some(err);
+                                                        }
+                                                        ui.close();
+                                                    }
+                                                });
+                                            });
+                                            ui.add_space(2.0);
+                                            let _ = ui.add(brand_button("Serve"));
+                                        });
+                                    });
+                                    ui.horizontal_wrapped(|ui| {
+                                        let framework_label = map_framework_label(&project.project_type);
+                                        ui.label(egui::RichText::new(framework_label).strong());
+                                        ui.label("•");
+                                        ui.label(egui::RichText::new(&project.main_path).italics());
+                                    });
                                 });
-                            });
-                            ui.horizontal_wrapped(|ui| {
-                                let framework_label = map_framework_label(&project.project_type);
-                                ui.label(egui::RichText::new(framework_label).strong());
-                                ui.label("•");
-                                ui.label(egui::RichText::new(&project.main_path).italics());
-                            });
+                                ui.add_space(6.0);
+                            }
                         });
-                        ui.add_space(6.0);
                     }
-                });
+                    Nav::About => {
+                        ui.label(support_page_body(SupportPage::About));
+                    }
+                    Nav::Feedback => {
+                        ui.label(support_page_body(SupportPage::Feedback));
+                    }
+                    Nav::PrivacyPolicy => {
+                        ui.label(support_page_body(SupportPage::PrivacyPolicy));
+                    }
+                }
 
                 if let Some(message) = &self.status_message {
                     ui.colored_label(Color32::from_rgb(130, 210, 130), message);
+                }
+
+                if let Some(action_error) = &self.project_action_error {
+                    ui.colored_label(Color32::LIGHT_RED, action_error);
                 }
 
                 if let Some(storage_error) = &self.storage_error {
@@ -338,21 +465,54 @@ impl eframe::App for ProjectDashboardApp {
             egui::Window::new("Theme")
                 .collapsible(false)
                 .resizable(false)
-                .default_size(Vec2::new(220.0, 130.0))
+                .default_size(Vec2::new(360.0, 170.0))
                 .open(&mut open)
                 .show(ctx, |ui| {
-                    if ui.button("System").clicked() {
-                        ctx.set_theme(ThemePreference::System);
-                        close_theme_popup = true;
-                    }
-                    if ui.button("Light").clicked() {
-                        ctx.set_theme(ThemePreference::Light);
-                        close_theme_popup = true;
-                    }
-                    if ui.button("Dark").clicked() {
-                        ctx.set_theme(ThemePreference::Dark);
-                        close_theme_popup = true;
-                    }
+                    ui.horizontal(|ui| {
+                        ui.label("Theme");
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if ui.button("Close").clicked() {
+                                close_theme_popup = true;
+                            }
+                        });
+                    });
+
+                    ui.add_space(6.0);
+                    ui.horizontal_centered(|ui| {
+                        let system_response = framework_card(
+                            ui,
+                            self.theme_mode == AppThemeMode::System,
+                            "🖥",
+                            "System",
+                        );
+                        if system_response.clicked() {
+                            self.theme_mode = AppThemeMode::System;
+                        }
+
+                        ui.add_space(6.0);
+
+                        let dark_response = framework_card(
+                            ui,
+                            self.theme_mode == AppThemeMode::Dark,
+                            "🌙",
+                            "Dark",
+                        );
+                        if dark_response.clicked() {
+                            self.theme_mode = AppThemeMode::Dark;
+                        }
+
+                        ui.add_space(6.0);
+
+                        let light_response = framework_card(
+                            ui,
+                            self.theme_mode == AppThemeMode::Light,
+                            "☀",
+                            "Light",
+                        );
+                        if light_response.clicked() {
+                            self.theme_mode = AppThemeMode::Light;
+                        }
+                    });
                 });
             if close_theme_popup {
                 open = false;
@@ -467,7 +627,12 @@ impl eframe::App for ProjectDashboardApp {
                                 if ui.button("Cancel").clicked() {
                                     close_modal = true;
                                 }
-                                if ui.add(brand_button("Create")).clicked() {
+                                let submit_label = if matches!(self.modal_mode, ModalMode::Edit { .. }) {
+                                    "Save"
+                                } else {
+                                    "Create"
+                                };
+                                if ui.add(brand_button(submit_label)).clicked() {
                                     match self.create_project() {
                                         Ok(success_message) => {
                                             self.status_message = Some(success_message);
@@ -488,6 +653,9 @@ impl eframe::App for ProjectDashboardApp {
                 open = false;
             }
             self.create_modal_open = open;
+            if !self.create_modal_open {
+                self.modal_mode = ModalMode::Create;
+            }
         }
     }
 }
@@ -500,28 +668,12 @@ fn framework_card(ui: &mut egui::Ui, selected: bool, icon: &str, label: &str) ->
         egui::Stroke::new(1.0, Color32::from_gray(95))
     };
 
+    let content = format!("{}\n\n{}", icon, label);
     let response = ui.add_sized(
         card_size,
-        Button::new("")
+        Button::new(RichText::new(content).size(16.0).strong())
             .fill(ui.style().visuals.panel_fill)
             .stroke(stroke),
-    );
-
-    let rect = response.rect;
-    let text_color = ui.style().visuals.text_color();
-    ui.painter().text(
-        egui::pos2(rect.center().x, rect.center().y - 20.0),
-        egui::Align2::CENTER_CENTER,
-        icon,
-        egui::FontId::proportional(26.0),
-        text_color,
-    );
-    ui.painter().text(
-        egui::pos2(rect.center().x, rect.center().y + 24.0),
-        egui::Align2::CENTER_CENTER,
-        label,
-        egui::FontId::proportional(16.0),
-        text_color,
     );
 
     if response.hovered() {
@@ -540,6 +692,7 @@ impl ProjectDashboardApp {
                 let nav_match = match self.nav {
                     Nav::Home => project.status != "archived",
                     Nav::Archived => project.status == "archived",
+                    Nav::About | Nav::Feedback | Nav::PrivacyPolicy => false,
                 };
                 let framework = map_framework_label(&project.project_type).to_lowercase();
                 let search_match = query.is_empty()
@@ -565,34 +718,99 @@ impl ProjectDashboardApp {
             return Err("Project path is required. Paste a path or use Browse.".to_owned());
         }
 
-        if self
-            .projects
-            .iter()
-            .any(|project| project.name.eq_ignore_ascii_case(name))
-        {
+        let editing_original = match &self.modal_mode {
+            ModalMode::Edit { original_name } => Some(original_name.as_str()),
+            ModalMode::Create => None,
+        };
+
+        if self.projects.iter().any(|project| {
+            project.name.eq_ignore_ascii_case(name)
+                && Some(project.name.as_str()) != editing_original
+        }) {
             return Err(format!("A project named '{name}' already exists."));
         }
 
         let today = current_date();
-        let project = ProjectRecord {
-            name: name.to_owned(),
-            project_type: self.create_form.project_type.storage_value().to_owned(),
-            main_path: main_path.to_owned(),
-            builds: Vec::new(),
-            status: "active".to_owned(),
-            created_on: today.clone(),
-            edited_on: today,
-        };
+        match &self.modal_mode {
+            ModalMode::Create => {
+                let project = ProjectRecord {
+                    name: name.to_owned(),
+                    project_type: self.create_form.project_type.storage_value().to_owned(),
+                    main_path: main_path.to_owned(),
+                    builds: Vec::new(),
+                    status: "active".to_owned(),
+                    created_on: today.clone(),
+                    edited_on: today,
+                };
+                self.projects.push(project);
+            }
+            ModalMode::Edit { original_name } => {
+                let project = self
+                    .projects
+                    .iter_mut()
+                    .find(|project| project.name == *original_name)
+                    .ok_or_else(|| format!("Project '{}' not found for edit.", original_name))?;
+                project.name = name.to_owned();
+                project.project_type = self.create_form.project_type.storage_value().to_owned();
+                project.main_path = main_path.to_owned();
+                project.edited_on = today;
+            }
+        }
 
-        self.projects.push(project);
+        self.persist_projects()?;
+        if matches!(self.modal_mode, ModalMode::Edit { .. }) {
+            Ok(format!("Project '{name}' updated."))
+        } else {
+            Ok(format!("Project '{name}' created."))
+        }
+    }
 
+    fn begin_edit_project(&mut self, project_name: &str) {
+        if let Some(project) = self.projects.iter().find(|project| project.name == project_name) {
+            self.create_form.name = project.name.clone();
+            self.create_form.main_path = project.main_path.clone();
+            self.create_form.project_type =
+                ProjectType::from_storage(&project.project_type).unwrap_or(ProjectType::Android);
+            self.selected_framework = self.create_form.project_type;
+            self.create_modal_step = CreateModalStep::Form;
+            self.modal_mode = ModalMode::Edit {
+                original_name: project.name.clone(),
+            };
+            self.form_error = None;
+            self.create_modal_open = true;
+        }
+    }
+
+    fn archive_project(&mut self, project_name: &str) -> Result<(), String> {
+        let project = self
+            .projects
+            .iter_mut()
+            .find(|project| project.name == project_name)
+            .ok_or_else(|| format!("Project '{project_name}' not found."))?;
+        project.status = "archived".to_owned();
+        project.edited_on = current_date();
+        self.persist_projects()?;
+        self.status_message = Some(format!("Project '{project_name}' archived."));
+        Ok(())
+    }
+
+    fn delete_project(&mut self, project_name: &str) -> Result<(), String> {
+        let before = self.projects.len();
+        self.projects.retain(|project| project.name != project_name);
+        if self.projects.len() == before {
+            return Err(format!("Project '{project_name}' not found."));
+        }
+        self.persist_projects()?;
+        self.status_message = Some(format!("Project '{project_name}' deleted."));
+        Ok(())
+    }
+
+    fn persist_projects(&self) -> Result<(), String> {
         let path = self
             .projects_file_path
             .as_ref()
             .ok_or_else(|| "Cannot determine config directory for Projects.json".to_owned())?;
-
-        save_projects(path, &self.projects)?;
-        Ok(format!("Project '{name}' saved to {}", path.display()))
+        save_projects(path, &self.projects)
     }
 }
 
@@ -605,6 +823,18 @@ fn nav_item(ui: &mut egui::Ui, dark: bool, nav: &mut Nav, value: Nav, label: &st
         ui.add(icon_image(themed_icon(dark, icon), 18.0));
         ui.selectable_value(nav, value, label);
     });
+}
+
+fn support_page_row(ui: &mut egui::Ui, dark: bool, icon: IconKind, label: &str) -> egui::Response {
+    ui.horizontal(|ui| {
+        ui.add(icon_image(themed_icon(dark, icon), 16.0));
+        ui.add(
+            Button::new(format!("{label}  >"))
+                .frame(false)
+                .fill(Color32::TRANSPARENT),
+        )
+    })
+    .inner
 }
 
 fn icon_button(source: ImageSource<'static>, size: f32) -> Button<'static> {
@@ -623,7 +853,13 @@ enum IconKind {
     PanelHide,
     PanelShow,
     Sort,
-    Edit,
+    Clear,
+    About,
+    Feedback,
+    Privacy,
+    ActionEdit,
+    ActionArchive,
+    ActionDelete,
 }
 
 fn themed_icon(dark: bool, icon: IconKind) -> ImageSource<'static> {
@@ -640,8 +876,33 @@ fn themed_icon(dark: bool, icon: IconKind) -> ImageSource<'static> {
         (false, IconKind::PanelShow) => egui::include_image!("../assets/icons/panel_show_light.svg"),
         (true, IconKind::Sort) => egui::include_image!("../assets/icons/sort_dark.svg"),
         (false, IconKind::Sort) => egui::include_image!("../assets/icons/sort_light.svg"),
-        (true, IconKind::Edit) => egui::include_image!("../assets/icons/edit_dark.svg"),
-        (false, IconKind::Edit) => egui::include_image!("../assets/icons/edit_light.svg"),
+        (true, IconKind::Clear) => egui::include_image!("../assets/icons/clear_dark.svg"),
+        (false, IconKind::Clear) => egui::include_image!("../assets/icons/clear_light.svg"),
+        (true, IconKind::About) => egui::include_image!("../assets/icons/about_dark.svg"),
+        (false, IconKind::About) => egui::include_image!("../assets/icons/about_light.svg"),
+        (true, IconKind::Feedback) => egui::include_image!("../assets/icons/feedback_dark.svg"),
+        (false, IconKind::Feedback) => egui::include_image!("../assets/icons/feedback_light.svg"),
+        (true, IconKind::Privacy) => egui::include_image!("../assets/icons/privacy_dark.svg"),
+        (false, IconKind::Privacy) => egui::include_image!("../assets/icons/privacy_light.svg"),
+        (true, IconKind::ActionEdit) => egui::include_image!("../assets/icons/action_edit_dark.svg"),
+        (false, IconKind::ActionEdit) => egui::include_image!("../assets/icons/action_edit_light.svg"),
+        (true, IconKind::ActionArchive) => egui::include_image!("../assets/icons/action_archive_dark.svg"),
+        (false, IconKind::ActionArchive) => egui::include_image!("../assets/icons/action_archive_light.svg"),
+        (_, IconKind::ActionDelete) => egui::include_image!("../assets/icons/action_delete_red.svg"),
+    }
+}
+
+fn support_page_body(page: SupportPage) -> &'static str {
+    match page {
+        SupportPage::About => {
+            "BuildBridge is a native desktop app for organizing project build outputs."
+        }
+        SupportPage::Feedback => {
+            "Feedback: please share bugs and feature ideas in your issue tracker."
+        }
+        SupportPage::PrivacyPolicy => {
+            "Privacy Policy: project data is saved locally in your OS config folder."
+        }
     }
 }
 
