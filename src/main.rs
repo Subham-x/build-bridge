@@ -329,8 +329,20 @@ impl eframe::App for ProjectDashboardApp {
 
             panel.show(ctx, |ui| {
                 if fully_open {
-                    self.sidebar_width = ui.available_width().clamp(200.0, 360.0);
-                    self.sidebar_animated_width = self.sidebar_width;
+                    let current_width = ui.available_width().clamp(200.0, 360.0);
+                    let dragging_width = ctx.input(|i| {
+                        let pointer_in_panel = i
+                            .pointer
+                            .interact_pos()
+                            .map_or(false, |pos| ui.max_rect().contains(pos));
+                        pointer_in_panel
+                            && i.pointer.primary_down()
+                            && i.pointer.delta().x.abs() > 0.0
+                    });
+                    if dragging_width || current_width < self.sidebar_width {
+                        self.sidebar_width = current_width;
+                        self.sidebar_animated_width = self.sidebar_width;
+                    }
                 }
 
                 ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
@@ -446,14 +458,22 @@ impl eframe::App for ProjectDashboardApp {
         let in_project_page_for_panels = matches!(self.nav, Nav::Home | Nav::Archived | Nav::Bin)
             && self.selected_project_name.is_some();
         if in_project_page_for_panels {
-            let bridge_height = if self.bridge_status_expanded { 98.0 } else { 24.0 };
-            TopBottomPanel::bottom("bridge_status")
-                .exact_height(bridge_height)
-                .show(ctx, |ui| {
-                    if let Some(project) = self.selected_project() {
-                        self.render_bridge_status(ui, dark, &project);
-                    }
-                });
+            let panel = if self.bridge_status_expanded {
+                TopBottomPanel::bottom("bridge_status")
+                    .resizable(true)
+                    .min_height(128.0)
+                    .max_height(200.0)
+                    .default_height(144.0)
+            } else {
+                TopBottomPanel::bottom("bridge_status")
+                    .resizable(false)
+                    .exact_height(24.0)
+            };
+            panel.show(ctx, |ui| {
+                if let Some(project) = self.selected_project() {
+                    self.render_bridge_status(ui, dark, &project);
+                }
+            });
         }
 
         if self.terminal_link_popup_open {
