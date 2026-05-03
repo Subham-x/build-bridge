@@ -380,13 +380,31 @@ impl eframe::App for ProjectDashboardApp {
 
                     if self.selected_project_name.is_some() {
                         ui.add_space(8.0);
-                        ui.colored_label(Color32::from_gray(140), "Terminal Title");
+                        let terminal_width = ui.available_width();
+                        let title_bg = if dark {
+                            Color32::from_gray(52)
+                        } else {
+                            Color32::from_gray(224)
+                        };
+                        let title_text = if dark {
+                            Color32::from_gray(175)
+                        } else {
+                            Color32::from_gray(80)
+                        };
+                        Frame::new()
+                            .fill(title_bg)
+                            .inner_margin(Margin::same(6))
+                            .show(ui, |ui| {
+                                ui.set_min_width(terminal_width);
+                                ui.colored_label(title_text, "Terminal");
+                            });
                         Frame::new()
                             .fill(Color32::BLACK)
                             .inner_margin(Margin::same(8))
                             .show(ui, |ui| {
                                 let terminal_font =
                                     FontId::new(12.5, FontFamily::Name("JetBrainsMono".into()));
+                                ui.set_min_width(ui.available_width());
                                 ui.set_min_height((ui.available_height() - 4.0).max(120.0));
                                 if let Some(project_name) = self.selected_project_name.clone() {
                                     let serve_line =
@@ -433,7 +451,7 @@ impl eframe::App for ProjectDashboardApp {
                 .exact_height(bridge_height)
                 .show(ctx, |ui| {
                     if let Some(project) = self.selected_project() {
-                        self.render_bridge_status(ui, &project);
+                        self.render_bridge_status(ui, dark, &project);
                     }
                 });
         }
@@ -457,11 +475,14 @@ impl eframe::App for ProjectDashboardApp {
                                 });
                                 self.terminal_link_popup_open = false;
                             }
-                            if ui.button("Copy").clicked() {
+                            if ui
+                                .add(
+                                    Button::new(RichText::new("Copy").color(Color32::WHITE))
+                                        .fill(Color32::from_rgb(2, 110, 193)),
+                                )
+                                .clicked()
+                            {
                                 ui.ctx().copy_text(url);
-                                self.terminal_link_popup_open = false;
-                            }
-                            if ui.button("Close").clicked() {
                                 self.terminal_link_popup_open = false;
                             }
                         });
@@ -1273,65 +1294,108 @@ impl ProjectDashboardApp {
                             })
                             .inner_margin(Margin::same(10))
                             .show(ui, |ui| {
-                                let info_text_color = if dark {
+                                let value_text_color = if dark {
                                     Color32::WHITE
                                 } else {
                                     Color32::BLACK
                                 };
-                                ui.colored_label(
-                                    info_text_color,
-                                    format!("Project: {}", project.name),
-                                );
-                                ui.colored_label(
-                                    info_text_color,
-                                    format!("Project Type: {}", map_framework_label(&project.project_type)),
-                                );
-                                ui.colored_label(
-                                    info_text_color,
-                                    format!("Location: {}", project.main_path),
-                                );
+                                let key_text_color = if dark {
+                                    Color32::from_gray(165)
+                                } else {
+                                    Color32::from_gray(90)
+                                };
+                                ui.horizontal(|ui| {
+                                    ui.colored_label(key_text_color, "Project:");
+                                    ui.colored_label(
+                                        value_text_color,
+                                        RichText::new(&project.name).strong(),
+                                    );
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.colored_label(key_text_color, "Project Type:");
+                                    ui.colored_label(
+                                        value_text_color,
+                                        RichText::new(map_framework_label(&project.project_type)).strong(),
+                                    );
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.colored_label(key_text_color, "Location:");
+                                    ui.colored_label(
+                                        value_text_color,
+                                        RichText::new(&project.main_path).strong(),
+                                    );
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.colored_label(key_text_color, "Feedback:");
+                                    if ui
+                                        .add(
+                                            Button::new(
+                                                RichText::new("Feedback folder")
+                                                    .color(Color32::BLACK)
+                                                    .strong(),
+                                            )
+                                            .fill(Color32::from_rgb(255, 205, 67)),
+                                        )
+                                        .clicked()
+                                    {
+                                        if let Some(parent) =
+                                            self.projects_file_path.as_ref().and_then(|p| p.parent())
+                                        {
+                                            let folder_url = format!(
+                                                "file:///{}",
+                                                parent.display().to_string().replace('\\', "/")
+                                            );
+                                            ui.ctx().open_url(egui::OpenUrl {
+                                                url: folder_url,
+                                                new_tab: false,
+                                            });
+                                        } else {
+                                            self.status_message =
+                                                Some("Feedback folder path unavailable.".to_owned());
+                                        }
+                                    }
+                                });
                             });
                     },
                 );
 
                 ui.add_space(10.0);
                 ui.vertical(|ui| {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label("Serve Type");
-                        let artifact_options = project_artifact_type_options(project);
-                        if !artifact_options
-                            .iter()
-                            .any(|item| item == &self.selected_artifact_type)
-                        {
-                            self.selected_artifact_type = artifact_options[0].clone();
-                        }
-                        ComboBox::from_id_salt("file-type-to-serve")
-                            .selected_text(&self.selected_artifact_type)
-                            .show_ui(ui, |ui| {
-                                for option in artifact_options {
-                                    ui.selectable_value(
-                                        &mut self.selected_artifact_type,
-                                        option.clone(),
-                                        option,
-                                    );
+                    let artifact_options = project_artifact_type_options(project);
+                    if !artifact_options
+                        .iter()
+                        .any(|item| item == &self.selected_artifact_type)
+                    {
+                        self.selected_artifact_type = artifact_options[0].clone();
+                    }
+                    Frame::new()
+                        .stroke(Stroke::new(
+                            1.0,
+                            if dark { Color32::from_gray(95) } else { Color32::from_gray(150) },
+                        ))
+                        .corner_radius(CornerRadius::same(0))
+                        .inner_margin(Margin::same(8))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label("Add file");
+                                if ui.button("+").clicked() {
+                                    self.status_message =
+                                        Some(format!("Add build clicked for '{}'.", project.name));
                                 }
                             });
 
-                        if ui.button("Add file +").clicked() {
-                            self.status_message =
-                                Some(format!("Add build clicked for '{}'.", project.name));
-                        }
-
-                        let _ = ui.add(
-                            icon_button(themed_icon(dark, IconKind::Broadcast), 14.0)
-                                .frame(true)
-                                .min_size(Vec2::new(30.0, 26.0)),
-                        );
-
-                        if ui.add(brand_button("Serve")).clicked() {
-                            self.status_message = Some(format!("Serve clicked for '{}'.", project.name));
-                        }
-                    });
+                            ui.horizontal(|ui| {
+                                let _ = ui.add(
+                                    icon_button(themed_icon(dark, IconKind::Broadcast), 14.0)
+                                        .frame(true)
+                                        .min_size(Vec2::new(30.0, 26.0)),
+                                );
+                                if ui.add(brand_button("Serve")).clicked() {
+                                    self.status_message =
+                                        Some(format!("Serve clicked for '{}'.", project.name));
+                                }
+                            });
+                        });
                 });
             });
 
@@ -1392,11 +1456,18 @@ impl ProjectDashboardApp {
                         egui::Label::new(
                             RichText::new(token)
                                 .font(font.clone())
-                                .color(Color32::from_rgb(66, 133, 244))
-                                .underline(),
+                                .color(Color32::from_rgb(66, 133, 244)),
                         )
                         .sense(egui::Sense::click()),
                     );
+                    if response.hovered() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        ui.painter().hline(
+                            response.rect.x_range(),
+                            response.rect.bottom() - 1.0,
+                            Stroke::new(1.0, Color32::from_rgb(66, 133, 244)),
+                        );
+                    }
                     if response.clicked() {
                         self.terminal_link_target = Some(token.to_owned());
                         self.terminal_link_popup_open = true;
@@ -1408,14 +1479,18 @@ impl ProjectDashboardApp {
         });
     }
 
-    fn render_bridge_status(&mut self, ui: &mut egui::Ui, project: &ProjectRecord) {
+    fn render_bridge_status(&mut self, ui: &mut egui::Ui, dark: bool, project: &ProjectRecord) {
         ui.horizontal(|ui| {
             ui.label(RichText::new("Bridge-status").strong());
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let arrow = if self.bridge_status_expanded { "▴" } else { "▾" };
+                let toggle_icon = if self.bridge_status_expanded {
+                    IconKind::BridgeStatusCollapse
+                } else {
+                    IconKind::BridgeStatusExpand
+                };
                 if ui
                     .add(
-                        Button::new(RichText::new(arrow).size(20.0).strong())
+                        icon_button(themed_icon(dark, toggle_icon), 16.0)
                             .min_size(Vec2::new(24.0, 20.0)),
                     )
                     .clicked()
@@ -1675,6 +1750,8 @@ enum IconKind {
     Feedback,
     Privacy,
     Broadcast,
+    BridgeStatusExpand,
+    BridgeStatusCollapse,
     ActionEdit,
     ActionArchive,
     ActionDelete,
@@ -1708,6 +1785,18 @@ fn themed_icon(dark: bool, icon: IconKind) -> ImageSource<'static> {
         (false, IconKind::Privacy) => egui::include_image!("../assets/icons/privacy_light.svg"),
         (true, IconKind::Broadcast) => egui::include_image!("../assets/icons/broadcast_dark.svg"),
         (false, IconKind::Broadcast) => egui::include_image!("../assets/icons/broadcast_light.svg"),
+        (true, IconKind::BridgeStatusExpand) => {
+            egui::include_image!("../assets/icons/bridge_status_expand_dark.svg")
+        }
+        (false, IconKind::BridgeStatusExpand) => {
+            egui::include_image!("../assets/icons/bridge_status_expand_light.svg")
+        }
+        (true, IconKind::BridgeStatusCollapse) => {
+            egui::include_image!("../assets/icons/bridge_status_collapse_dark.svg")
+        }
+        (false, IconKind::BridgeStatusCollapse) => {
+            egui::include_image!("../assets/icons/bridge_status_collapse_light.svg")
+        }
         (true, IconKind::ActionEdit) => egui::include_image!("../assets/icons/action_edit_dark.svg"),
         (false, IconKind::ActionEdit) => egui::include_image!("../assets/icons/action_edit_light.svg"),
         (true, IconKind::ActionArchive) => egui::include_image!("../assets/icons/action_archive_dark.svg"),
