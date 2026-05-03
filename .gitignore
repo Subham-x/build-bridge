@@ -8,3 +8,5 @@ docs
 # Added by cargo
 
 /target
+/target/release/*.exe
+/target/release/*.pdb

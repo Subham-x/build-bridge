@@ -2,19 +2,24 @@ use chrono::Local;
 use directories::ProjectDirs;
 use eframe::egui::{
     self, Align, Button, Color32, ComboBox, CornerRadius, Frame, Image, ImageSource, Layout,
-    Margin, RichText, ScrollArea, Stroke, StrokeKind,
+    IconData, Margin, RichText, ScrollArea, Stroke, StrokeKind,
     ThemePreference, TextEdit, TopBottomPanel, Vec2,
 };
+use image::ImageReader;
 use serde::{Deserialize, Serialize};
+use std::io::Cursor;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 fn main() -> Result<(), eframe::Error> {
+    let icon_data = load_app_icon();
+
     let viewport = egui::ViewportBuilder::default()
-        .with_title("BuildBridge")
+        .with_title("Build Stream")
         .with_inner_size([1024.0, 538.0])
         .with_min_inner_size([920.0, 434.0])
+        .with_icon(icon_data)
         .with_resizable(true)
         .with_decorations(true);
 
@@ -24,13 +29,30 @@ fn main() -> Result<(), eframe::Error> {
     };
 
     eframe::run_native(
-        "BuildBridge",
+        "Build Stream",
         native_options,
         Box::new(|cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
             Ok(Box::<ProjectDashboardApp>::default())
         }),
     )
+}
+
+fn load_app_icon() -> IconData {
+    let icon_bytes = include_bytes!("../icon.ico");
+    let decoded = ImageReader::new(Cursor::new(icon_bytes))
+        .with_guessed_format()
+        .expect("Failed to detect format for icon.ico")
+        .decode()
+        .expect("Failed to decode icon.ico");
+    let rgba = decoded.to_rgba8();
+    let (width, height) = rgba.dimensions();
+
+    IconData {
+        rgba: rgba.into_raw(),
+        width,
+        height,
+    }
 }
 
 struct ProjectDashboardApp {
