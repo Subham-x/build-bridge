@@ -359,7 +359,14 @@ impl eframe::App for ProjectDashboardApp {
 
                 if self.sidebar_animated_width >= 120.0 {
                     ui.label("General");
-                    nav_item(ui, dark, &mut self.nav, Nav::Home, "Home", IconKind::Home);
+                    nav_item(
+                        ui,
+                        dark,
+                        &mut self.nav,
+                        Nav::Home,
+                        "Projects",
+                        IconKind::Briefcase,
+                    );
                     nav_item(
                         ui,
                         dark,
@@ -368,9 +375,9 @@ impl eframe::App for ProjectDashboardApp {
                         "Archived",
                         IconKind::Archive,
                     );
-                    nav_item(ui, dark, &mut self.nav, Nav::Bin, "Bin", IconKind::Bin);
+                    nav_item(ui, dark, &mut self.nav, Nav::Bin, "Bin", IconKind::Trash);
                     ui.horizontal(|ui| {
-                        ui.add(icon_image(themed_icon(dark, IconKind::Theme), 18.0));
+                        ui.add(icon_image(themed_icon(dark, IconKind::Palette), 18.0));
                         if ui
                             .add(Button::new("Theme").frame(false).fill(Color32::TRANSPARENT))
                             .clicked()
@@ -721,165 +728,187 @@ impl eframe::App for ProjectDashboardApp {
                             self.render_project_details_content(ui, dark, &project);
                         } else {
                             let list_height = (ui.available_height() - 6.0).max(180.0);
-                            ScrollArea::vertical().max_height(list_height).show(ui, |ui| {
-                                for project in self.filtered_projects() {
-                                    let card_response = ui
-                                        .group(|ui| {
-                                    ui.horizontal(|ui| {
-                                        if (self.nav == Nav::Archived && self.archive_select_mode)
-                                            || (self.nav == Nav::Bin && self.bin_select_mode)
-                                        {
-                                            let mut checked = if self.nav == Nav::Archived {
-                                                self.archive_selected.contains(&project.name)
-                                            } else {
-                                                self.bin_selected.contains(&project.name)
-                                            };
-                                            if ui.checkbox(&mut checked, "").changed() {
-                                                if self.nav == Nav::Archived {
-                                                    if checked {
-                                                        self.archive_selected.insert(project.name.clone());
-                                                    } else {
-                                                        self.archive_selected.remove(&project.name);
-                                                    }
-                                                } else {
-                                                    if checked {
-                                                        self.bin_selected.insert(project.name.clone());
-                                                    } else {
-                                                        self.bin_selected.remove(&project.name);
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        let name_color = if dark { Color32::WHITE } else { Color32::BLACK };
-                                        ui.label(RichText::new(&project.name).strong().color(name_color));
-
-                                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                            ui.menu_image_button(icon_image(themed_icon(dark, IconKind::MoreVert), 16.0), |ui| {
-                                                ui.horizontal(|ui| {
-                                                    ui.add(icon_image(themed_icon(dark, IconKind::ActionEdit), 14.0));
-                                                    if ui.button("Edit").clicked() {
-                                                        self.begin_edit_project(&project.name);
-                                                        ui.close();
-                                                    }
-                                                });
-                                                if self.nav != Nav::Archived {
-                                                    ui.horizontal(|ui| {
-                                                        ui.add(icon_image(themed_icon(dark, IconKind::ActionArchive), 14.0));
-                                                        if ui.button("Archive").clicked() {
-                                                            if let Err(err) = self.archive_project(&project.name) {
-                                                                self.project_action_error = Some(err);
-                                                            }
-                                                            ui.close();
-                                                        }
-                                                    });
-                                                } else {
-                                                    ui.horizontal(|ui| {
-                                                        ui.add(icon_image(themed_icon(dark, IconKind::ActionArchive), 14.0));
-                                                        if ui.button("Unarchive").clicked() {
-                                                            if let Err(err) = self.unarchive_project(&project.name) {
-                                                                self.project_action_error = Some(err);
-                                                            }
-                                                            ui.close();
-                                                        }
-                                                    });
-                                                }
-
-                                                if self.nav != Nav::Bin {
-                                                    ui.horizontal(|ui| {
-                                                        ui.add(icon_image(themed_icon(dark, IconKind::Bin), 14.0));
-                                                        let bin_button = if self.nav == Nav::Home {
-                                                            Button::new(
-                                                                RichText::new("Bin").color(Color32::from_rgb(229, 57, 53)),
-                                                            )
-                                                        } else {
-                                                            Button::new("Bin")
-                                                        };
-                                                        if ui.add(bin_button).clicked()
-                                                        {
-                                                            if let Err(err) = self.bin_project(&project.name) {
-                                                                self.project_action_error = Some(err);
-                                                            }
-                                                            ui.close();
-                                                        }
-                                                    });
-                                                }
-
-                                                if self.nav == Nav::Bin {
-                                                    ui.horizontal(|ui| {
-                                                        ui.add(icon_image(themed_icon(dark, IconKind::ActionArchive), 14.0));
-                                                        if ui.button("Restore").clicked() {
-                                                            if let Err(err) = self.restore_project(&project.name) {
-                                                                self.project_action_error = Some(err);
-                                                            }
-                                                            ui.close();
-                                                        }
-                                                    });
-                                                    ui.horizontal(|ui| {
-                                                        ui.add(icon_image(themed_icon(dark, IconKind::ActionDelete), 14.0));
-                                                        if ui
-                                                            .add(Button::new(RichText::new("Permanent Delete").color(Color32::from_rgb(229, 57, 53))))
-                                                            .clicked()
-                                                        {
-                                                            if let Err(err) = self.permanent_delete_project(&project.name) {
-                                                                self.project_action_error = Some(err);
-                                                            }
-                                                            ui.close();
-                                                        }
-                                                    });
-                                                }
-
-                                            });
-                                            if ui
-                                                .add(
-                                                    icon_button(themed_icon(dark, IconKind::Broadcast), 14.0)
-                                                        .frame(true)
-                                                        .min_size(Vec2::new(28.0, 24.0)),
-                                                )
-                                                .on_hover_text("Serve settings")
-                                                .clicked()
+                            let projects = self.filtered_projects();
+                            if projects.is_empty() {
+                                let (empty_icon, empty_label) = match self.nav {
+                                    Nav::Home => (IconKind::Briefcase, "No Projects"),
+                                    Nav::Archived => (IconKind::Archive, "No Archived Projects"),
+                                    Nav::Bin => (IconKind::Trash, "No Projects in Bin"),
+                                    Nav::About | Nav::Feedback | Nav::PrivacyPolicy => {
+                                        (IconKind::Briefcase, "No Projects")
+                                    }
+                                };
+                                ui.allocate_ui_with_layout(
+                                    Vec2::new(ui.available_width(), list_height),
+                                    Layout::top_down(Align::Center),
+                                    |ui| {
+                                        ui.add_space(12.0);
+                                        ui.add(icon_image(themed_icon(dark, empty_icon), 48.0));
+                                        ui.add_space(6.0);
+                                        ui.label(empty_label);
+                                    },
+                                );
+                            } else {
+                                ScrollArea::vertical().max_height(list_height).show(ui, |ui| {
+                                    for project in projects {
+                                        let card_response = ui
+                                            .group(|ui| {
+                                        ui.horizontal(|ui| {
+                                            if (self.nav == Nav::Archived && self.archive_select_mode)
+                                                || (self.nav == Nav::Bin && self.bin_select_mode)
                                             {
-                                                self.status_message = Some(format!(
-                                                    "Serve settings clicked for '{}'.",
-                                                    project.name
-                                                ));
-                                            }
-                                            ui.add_space(2.0);
-                                            if self.nav == Nav::Archived {
-                                                if ui.add(brand_button("Unarchive")).clicked() {
-                                                    if let Err(err) = self.unarchive_project(&project.name) {
-                                                        self.project_action_error = Some(err);
+                                                let mut checked = if self.nav == Nav::Archived {
+                                                    self.archive_selected.contains(&project.name)
+                                                } else {
+                                                    self.bin_selected.contains(&project.name)
+                                                };
+                                                if ui.checkbox(&mut checked, "").changed() {
+                                                    if self.nav == Nav::Archived {
+                                                        if checked {
+                                                            self.archive_selected.insert(project.name.clone());
+                                                        } else {
+                                                            self.archive_selected.remove(&project.name);
+                                                        }
+                                                    } else {
+                                                        if checked {
+                                                            self.bin_selected.insert(project.name.clone());
+                                                        } else {
+                                                            self.bin_selected.remove(&project.name);
+                                                        }
                                                     }
                                                 }
-                                            } else if self.nav == Nav::Bin {
-                                                if ui.add(brand_button("Restore")).clicked() {
-                                                    if let Err(err) = self.restore_project(&project.name) {
-                                                        self.project_action_error = Some(err);
-                                                    }
-                                                }
-                                            } else if project.status == "active" {
-                                                let _ = ui.add(brand_button("Serve"));
                                             }
+
+                                            let name_color = if dark { Color32::WHITE } else { Color32::BLACK };
+                                            ui.label(RichText::new(&project.name).strong().color(name_color));
+
+                                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                                ui.menu_image_button(icon_image(themed_icon(dark, IconKind::MoreVert), 16.0), |ui| {
+                                                    ui.horizontal(|ui| {
+                                                        ui.add(icon_image(themed_icon(dark, IconKind::ActionEdit), 14.0));
+                                                        if ui.button("Edit").clicked() {
+                                                            self.begin_edit_project(&project.name);
+                                                            ui.close();
+                                                        }
+                                                    });
+                                                    if self.nav != Nav::Archived {
+                                                        ui.horizontal(|ui| {
+                                                            ui.add(icon_image(themed_icon(dark, IconKind::ActionArchive), 14.0));
+                                                            if ui.button("Archive").clicked() {
+                                                                if let Err(err) = self.archive_project(&project.name) {
+                                                                    self.project_action_error = Some(err);
+                                                                }
+                                                                ui.close();
+                                                            }
+                                                        });
+                                                    } else {
+                                                        ui.horizontal(|ui| {
+                                                            ui.add(icon_image(themed_icon(dark, IconKind::ActionArchive), 14.0));
+                                                            if ui.button("Unarchive").clicked() {
+                                                                if let Err(err) = self.unarchive_project(&project.name) {
+                                                                    self.project_action_error = Some(err);
+                                                                }
+                                                                ui.close();
+                                                            }
+                                                        });
+                                                    }
+
+                                                    if self.nav != Nav::Bin {
+                                                        ui.horizontal(|ui| {
+                                                            ui.add(icon_image(themed_icon(dark, IconKind::Trash), 14.0));
+                                                            let bin_button = if self.nav == Nav::Home {
+                                                                Button::new(
+                                                                    RichText::new("Bin").color(Color32::from_rgb(229, 57, 53)),
+                                                                )
+                                                            } else {
+                                                                Button::new("Bin")
+                                                            };
+                                                            if ui.add(bin_button).clicked()
+                                                            {
+                                                                if let Err(err) = self.bin_project(&project.name) {
+                                                                    self.project_action_error = Some(err);
+                                                                }
+                                                                ui.close();
+                                                            }
+                                                        });
+                                                    }
+
+                                                    if self.nav == Nav::Bin {
+                                                        ui.horizontal(|ui| {
+                                                            ui.add(icon_image(themed_icon(dark, IconKind::ActionArchive), 14.0));
+                                                            if ui.button("Restore").clicked() {
+                                                                if let Err(err) = self.restore_project(&project.name) {
+                                                                    self.project_action_error = Some(err);
+                                                                }
+                                                                ui.close();
+                                                            }
+                                                        });
+                                                        ui.horizontal(|ui| {
+                                                            ui.add(icon_image(themed_icon(dark, IconKind::ActionDelete), 14.0));
+                                                            if ui
+                                                                .add(Button::new(RichText::new("Permanent Delete").color(Color32::from_rgb(229, 57, 53))))
+                                                                .clicked()
+                                                            {
+                                                                if let Err(err) = self.permanent_delete_project(&project.name) {
+                                                                    self.project_action_error = Some(err);
+                                                                }
+                                                                ui.close();
+                                                            }
+                                                        });
+                                                    }
+
+                                                });
+                                                if ui
+                                                    .add(
+                                                        icon_button(themed_icon(dark, IconKind::Broadcast), 14.0)
+                                                            .frame(true)
+                                                            .min_size(Vec2::new(28.0, 24.0)),
+                                                    )
+                                                    .on_hover_text("Serve settings")
+                                                    .clicked()
+                                                {
+                                                    self.status_message = Some(format!(
+                                                        "Serve settings clicked for '{}'.",
+                                                        project.name
+                                                    ));
+                                                }
+                                                ui.add_space(2.0);
+                                                if self.nav == Nav::Archived {
+                                                    if ui.add(brand_button("Unarchive")).clicked() {
+                                                        if let Err(err) = self.unarchive_project(&project.name) {
+                                                            self.project_action_error = Some(err);
+                                                        }
+                                                    }
+                                                } else if self.nav == Nav::Bin {
+                                                    if ui.add(brand_button("Restore")).clicked() {
+                                                        if let Err(err) = self.restore_project(&project.name) {
+                                                            self.project_action_error = Some(err);
+                                                        }
+                                                    }
+                                                } else if project.status == "active" {
+                                                    let _ = ui.add(brand_button("Serve"));
+                                                }
+                                            });
                                         });
-                                    });
-                                    ui.horizontal_wrapped(|ui| {
-                                        let framework_label = map_framework_label(&project.project_type);
-                                        ui.label(egui::RichText::new(framework_label).strong());
-                                        ui.label("•");
-                                        ui.label(egui::RichText::new(&project.main_path).italics());
-                                    });
-                                    })
-                                    .response
-                                    .interact(egui::Sense::click());
-                                if card_response.hovered() {
-                                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                                }
-                                if card_response.clicked() {
-                                    self.open_project_details(&project.name);
-                                }
-                                    ui.add_space(6.0);
-                                }
-                            });
+                                        ui.horizontal_wrapped(|ui| {
+                                            let framework_label = map_framework_label(&project.project_type);
+                                            ui.label(egui::RichText::new(framework_label).strong());
+                                            ui.label("•");
+                                            ui.label(egui::RichText::new(&project.main_path).italics());
+                                        });
+                                        })
+                                        .response
+                                        .interact(egui::Sense::click());
+                                    if card_response.hovered() {
+                                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                    }
+                                    if card_response.clicked() {
+                                        self.open_project_details(&project.name);
+                                    }
+                                        ui.add_space(6.0);
+                                    }
+                                });
+                            }
                         }
                     }
                     Nav::About => {
@@ -1819,11 +1848,11 @@ fn icon_image(source: ImageSource<'static>, size: f32) -> Image<'static> {
 
 #[derive(Clone, Copy)]
 enum IconKind {
-    Home,
+    Briefcase,
     Archive,
-    Bin,
+    Trash,
     MoreVert,
-    Theme,
+    Palette,
     PanelHide,
     PanelShow,
     Sort,
@@ -1843,16 +1872,16 @@ enum IconKind {
 
 fn themed_icon(dark: bool, icon: IconKind) -> ImageSource<'static> {
     match (dark, icon) {
-        (true, IconKind::Home) => egui::include_image!("../assets/icons/home_dark.svg"),
-        (false, IconKind::Home) => egui::include_image!("../assets/icons/home_light.svg"),
+        (true, IconKind::Briefcase) => egui::include_image!("../assets/icons/briefcase_dark.svg"),
+        (false, IconKind::Briefcase) => egui::include_image!("../assets/icons/briefcase_light.svg"),
         (true, IconKind::Archive) => egui::include_image!("../assets/icons/archive_dark.svg"),
         (false, IconKind::Archive) => egui::include_image!("../assets/icons/archive_light.svg"),
-        (true, IconKind::Bin) => egui::include_image!("../assets/icons/bin_dark.svg"),
-        (false, IconKind::Bin) => egui::include_image!("../assets/icons/bin_light.svg"),
+        (true, IconKind::Trash) => egui::include_image!("../assets/icons/trash_dark.svg"),
+        (false, IconKind::Trash) => egui::include_image!("../assets/icons/trash_light.svg"),
         (true, IconKind::MoreVert) => egui::include_image!("../assets/icons/more_vert_dark.svg"),
         (false, IconKind::MoreVert) => egui::include_image!("../assets/icons/more_vert_light.svg"),
-        (true, IconKind::Theme) => egui::include_image!("../assets/icons/theme_dark.svg"),
-        (false, IconKind::Theme) => egui::include_image!("../assets/icons/theme_light.svg"),
+        (true, IconKind::Palette) => egui::include_image!("../assets/icons/palette_dark.svg"),
+        (false, IconKind::Palette) => egui::include_image!("../assets/icons/palette_light.svg"),
         (true, IconKind::PanelHide) => egui::include_image!("../assets/icons/panel_hide_dark.svg"),
         (false, IconKind::PanelHide) => egui::include_image!("../assets/icons/panel_hide_light.svg"),
         (true, IconKind::PanelShow) => egui::include_image!("../assets/icons/panel_show_dark.svg"),
@@ -1947,9 +1976,9 @@ fn resolve_projects_file_path() -> Result<PathBuf, String> {
 
 fn load_or_create_projects(path: &Path) -> Result<Vec<ProjectRecord>, String> {
     if !path.exists() {
-        let sample = sample_projects();
-        save_projects(path, &sample)?;
-        return Ok(sample);
+        let empty: Vec<ProjectRecord> = Vec::new();
+        save_projects(path, &empty)?;
+        return Ok(empty);
     }
 
     let raw = fs::read_to_string(path)
