@@ -407,6 +407,7 @@ impl eframe::App for ProjectDashboardApp {
                             .fill(title_bg)
                             .inner_margin(Margin::same(6))
                             .show(ui, |ui| {
+                                ui.set_min_width(ui.available_width());
                                 ui.colored_label(title_text, "Terminal");
                             });
                         Frame::new()
