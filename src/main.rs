@@ -448,9 +448,14 @@ impl eframe::App for ProjectDashboardApp {
             .exact_height(24.0)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    if let Some(message) = &self.status_message {
-                        ui.colored_label(Color32::from_rgb(2, 110, 193), message);
-                    }
+                    let (icon, text) = if let Some(message) = &self.status_message {
+                        (IconKind::Bell, message.as_str())
+                    } else {
+                        (IconKind::BellSlash, "No new notifications")
+                    };
+                    ui.add(icon_image(themed_icon(dark, icon), 16.0));
+                    ui.add_space(6.0);
+                    ui.colored_label(Color32::from_rgb(2, 110, 193), text);
                 });
             });
 
@@ -1827,6 +1832,8 @@ enum IconKind {
     Feedback,
     Privacy,
     Broadcast,
+    Bell,
+    BellSlash,
     BridgeStatusExpand,
     BridgeStatusCollapse,
     ActionEdit,
@@ -1862,6 +1869,10 @@ fn themed_icon(dark: bool, icon: IconKind) -> ImageSource<'static> {
         (false, IconKind::Privacy) => egui::include_image!("../assets/icons/privacy_light.svg"),
         (true, IconKind::Broadcast) => egui::include_image!("../assets/icons/broadcast_dark.svg"),
         (false, IconKind::Broadcast) => egui::include_image!("../assets/icons/broadcast_light.svg"),
+        (true, IconKind::Bell) => egui::include_image!("../assets/icons/bell_dark.svg"),
+        (false, IconKind::Bell) => egui::include_image!("../assets/icons/bell_light.svg"),
+        (true, IconKind::BellSlash) => egui::include_image!("../assets/icons/bell_slash_dark.svg"),
+        (false, IconKind::BellSlash) => egui::include_image!("../assets/icons/bell_slash_light.svg"),
         (true, IconKind::BridgeStatusExpand) => {
             egui::include_image!("../assets/icons/bridge_status_expand_dark.svg")
         }
