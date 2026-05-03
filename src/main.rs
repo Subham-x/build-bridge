@@ -2,15 +2,16 @@ use chrono::Local;
 use directories::ProjectDirs;
 use eframe::egui::{
     self, Align, Button, Color32, ComboBox, CornerRadius, Frame, Image, ImageSource, Layout,
-    IconData, Margin, RichText, ScrollArea, Stroke, StrokeKind,
+    FontData, FontDefinitions, FontFamily, FontId, IconData, Margin, RichText, ScrollArea, Stroke, StrokeKind,
     ThemePreference, TextEdit, TopBottomPanel, Vec2,
 };
 use image::ImageReader;
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 fn main() -> Result<(), eframe::Error> {
     let icon_data = load_app_icon();
@@ -33,6 +34,7 @@ fn main() -> Result<(), eframe::Error> {
         native_options,
         Box::new(|cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
+            configure_fonts(&cc.egui_ctx);
             Ok(Box::<ProjectDashboardApp>::default())
         }),
     )
@@ -53,6 +55,22 @@ fn load_app_icon() -> IconData {
         width,
         height,
     }
+}
+
+fn configure_fonts(ctx: &egui::Context) {
+    let mut fonts = FontDefinitions::default();
+    fonts.font_data.insert(
+        "jetbrains-regular".to_owned(),
+        Arc::new(FontData::from_static(include_bytes!(
+            "../assets/fonts/JetBrainsMono-Regular.ttf"
+        ))),
+    );
+    fonts
+        .families
+        .entry(FontFamily::Name("JetBrainsMono".into()))
+        .or_default()
+        .push("jetbrains-regular".to_owned());
+    ctx.set_fonts(fonts);
 }
 
 struct ProjectDashboardApp {
@@ -82,8 +100,12 @@ struct ProjectDashboardApp {
     bin_select_mode: bool,
     bin_selected: HashSet<String>,
     empty_bin_confirm_open: bool,
-    project_details_open: bool,
     selected_project_name: Option<String>,
+    selected_build_index: Option<usize>,
+    selected_artifact_type: String,
+    bridge_status_expanded: bool,
+    terminal_link_popup_open: bool,
+    terminal_link_target: Option<String>,
 }
 
 impl Default for ProjectDashboardApp {
@@ -116,8 +138,12 @@ impl Default for ProjectDashboardApp {
             bin_select_mode: false,
             bin_selected: HashSet::new(),
             empty_bin_confirm_open: false,
-            project_details_open: false,
             selected_project_name: None,
+            selected_build_index: None,
+            selected_artifact_type: "Type".to_owned(),
+            bridge_status_expanded: false,
+            terminal_link_popup_open: false,
+            terminal_link_target: None,
         }
     }
 }
@@ -263,6 +289,15 @@ impl eframe::App for ProjectDashboardApp {
             apply_native_mica(frame, &mut self.mica_error);
         }
 
+        if !matches!(self.nav, Nav::Home | Nav::Archived | Nav::Bin)
+            && self.selected_project_name.is_some()
+        {
+            self.close_project_details();
+        }
+        if self.selected_project_name.is_some() && self.selected_project().is_none() {
+            self.close_project_details();
+        }
+
         let dark = ctx.style().visuals.dark_mode;
 
         let target_width = if self.sidebar_visible {
@@ -342,6 +377,40 @@ impl eframe::App for ProjectDashboardApp {
                     if support_page_row(ui, dark, IconKind::Privacy, "Privacy Policy").clicked() {
                         self.nav = Nav::PrivacyPolicy;
                     }
+
+                    if self.selected_project_name.is_some() {
+                        ui.add_space(8.0);
+                        ui.colored_label(Color32::from_gray(140), "Terminal Title");
+                        Frame::new()
+                            .fill(Color32::BLACK)
+                            .inner_margin(Margin::same(8))
+                            .show(ui, |ui| {
+                                let terminal_font =
+                                    FontId::new(12.5, FontFamily::Name("JetBrainsMono".into()));
+                                ui.set_min_height((ui.available_height() - 4.0).max(120.0));
+                                if let Some(project_name) = self.selected_project_name.clone() {
+                                    let serve_line =
+                                        format!("PS > serve \"{project_name}\" --mode bridge");
+                                    ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                                        self.render_terminal_line(
+                                            ui,
+                                            &serve_line,
+                                            &terminal_font,
+                                        );
+                                        self.render_terminal_line(
+                                            ui,
+                                            "Bridge status: connected",
+                                            &terminal_font,
+                                        );
+                                        self.render_terminal_line(
+                                            ui,
+                                            "Listening on http://127.1.1.0:4000",
+                                            &terminal_font,
+                                        );
+                                    });
+                                }
+                            });
+                    }
                 }
             });
         }
@@ -356,8 +425,55 @@ impl eframe::App for ProjectDashboardApp {
                 });
             });
 
+        let in_project_page_for_panels = matches!(self.nav, Nav::Home | Nav::Archived | Nav::Bin)
+            && self.selected_project_name.is_some();
+        if in_project_page_for_panels {
+            let bridge_height = if self.bridge_status_expanded { 98.0 } else { 24.0 };
+            TopBottomPanel::bottom("bridge_status")
+                .exact_height(bridge_height)
+                .show(ctx, |ui| {
+                    if let Some(project) = self.selected_project() {
+                        self.render_bridge_status(ui, &project);
+                    }
+                });
+        }
+
+        if self.terminal_link_popup_open {
+            let mut open = self.terminal_link_popup_open;
+            egui::Window::new("Terminal Link")
+                .collapsible(false)
+                .resizable(false)
+                .default_size(Vec2::new(260.0, 100.0))
+                .open(&mut open)
+                .show(ctx, |ui| {
+                    if let Some(url) = self.terminal_link_target.clone() {
+                        ui.label(&url);
+                        ui.add_space(6.0);
+                        ui.horizontal(|ui| {
+                            if ui.button("Open").clicked() {
+                                ui.ctx().open_url(egui::OpenUrl {
+                                    url: url.clone(),
+                                    new_tab: true,
+                                });
+                                self.terminal_link_popup_open = false;
+                            }
+                            if ui.button("Copy").clicked() {
+                                ui.ctx().copy_text(url);
+                                self.terminal_link_popup_open = false;
+                            }
+                            if ui.button("Close").clicked() {
+                                self.terminal_link_popup_open = false;
+                            }
+                        });
+                    }
+                });
+            self.terminal_link_popup_open = open && self.terminal_link_target.is_some();
+        }
+
         egui::CentralPanel::default().show(ctx, |ui| {
             Frame::new().inner_margin(Margin::same(12)).show(ui, |ui| {
+                let in_project_page = matches!(self.nav, Nav::Home | Nav::Archived | Nav::Bin)
+                    && self.selected_project_name.is_some();
                 ui.horizontal(|ui| {
                     if !self.sidebar_visible {
                         if ui
@@ -370,52 +486,61 @@ impl eframe::App for ProjectDashboardApp {
                         ui.add_space(8.0);
                     }
 
-                    let heading = if self.nav == Nav::Bin {
+                    let heading = if in_project_page {
+                        self.selected_project_name.as_deref().unwrap_or("Project Details")
+                    } else if self.nav == Nav::Bin {
                         "Bin"
                     } else {
                         "Your Projects"
                     };
                     ui.heading(heading);
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        match self.nav {
-                            Nav::Bin => {
-                                let select_label = if self.bin_select_mode { "Done" } else { "Select" };
-                                if ui.button(select_label).clicked() {
-                                    self.bin_select_mode = !self.bin_select_mode;
-                                    if !self.bin_select_mode {
-                                        self.bin_selected.clear();
+                        if in_project_page {
+                            if ui.button("Back").clicked() {
+                                self.close_project_details();
+                            }
+                        } else {
+                            match self.nav {
+                                Nav::Bin => {
+                                    let select_label = if self.bin_select_mode { "Done" } else { "Select" };
+                                    if ui.button(select_label).clicked() {
+                                        self.bin_select_mode = !self.bin_select_mode;
+                                        if !self.bin_select_mode {
+                                            self.bin_selected.clear();
+                                        }
+                                    }
+                                    if !self.bin_select_mode && ui.button("Empty Bin").clicked() {
+                                        self.empty_bin_confirm_open = true;
                                     }
                                 }
-                                if !self.bin_select_mode && ui.button("Empty Bin").clicked() {
-                                    self.empty_bin_confirm_open = true;
-                                }
-                            }
-                            Nav::Archived => {
-                                let select_label = if self.archive_select_mode { "Done" } else { "Select" };
-                                if ui.button(select_label).clicked() {
-                                    self.archive_select_mode = !self.archive_select_mode;
-                                    if !self.archive_select_mode {
-                                        self.archive_selected.clear();
+                                Nav::Archived => {
+                                    let select_label = if self.archive_select_mode { "Done" } else { "Select" };
+                                    if ui.button(select_label).clicked() {
+                                        self.archive_select_mode = !self.archive_select_mode;
+                                        if !self.archive_select_mode {
+                                            self.archive_selected.clear();
+                                        }
                                     }
                                 }
-                            }
-                            Nav::Home => {
-                                if ui.add(brand_button("Create")).clicked() {
-                                    self.form_error = None;
-                                    self.create_form = CreateProjectForm::default();
-                                    self.create_modal_step = CreateModalStep::Framework;
-                                    self.selected_framework = self.create_form.project_type;
-                                    self.modal_mode = ModalMode::Create;
-                                    self.create_modal_open = true;
+                                Nav::Home => {
+                                    if ui.add(brand_button("Create")).clicked() {
+                                        self.form_error = None;
+                                        self.create_form = CreateProjectForm::default();
+                                        self.create_modal_step = CreateModalStep::Framework;
+                                        self.selected_framework = self.create_form.project_type;
+                                        self.modal_mode = ModalMode::Create;
+                                        self.create_modal_open = true;
+                                    }
                                 }
+                                Nav::About | Nav::Feedback | Nav::PrivacyPolicy => {}
                             }
-                            Nav::About | Nav::Feedback | Nav::PrivacyPolicy => {}
                         }
                     });
                 });
                 ui.add_space(8.0);
 
-                ui.horizontal(|ui| {
+                if !in_project_page {
+                    ui.horizontal(|ui| {
                     let sort_base = ui.spacing().interact_size.y;
                     let search_height = sort_base + 5.0;
                     let space = ui.spacing().item_spacing.x;
@@ -452,13 +577,14 @@ impl eframe::App for ProjectDashboardApp {
                         }
                     }
 
-                    let _ = ui.add(
-                        icon_button(themed_icon(dark, IconKind::Sort), search_height)
-                            .min_size(Vec2::splat(search_height)),
-                    );
-                });
+                        let _ = ui.add(
+                            icon_button(themed_icon(dark, IconKind::Sort), search_height)
+                                .min_size(Vec2::splat(search_height)),
+                        );
+                    });
+                }
 
-                if self.nav == Nav::Archived && self.archive_select_mode {
+                if !in_project_page && self.nav == Nav::Archived && self.archive_select_mode {
                     ui.add_space(6.0);
                     ui.horizontal_wrapped(|ui| {
                         if ui.button("Select all").clicked() {
@@ -499,7 +625,7 @@ impl eframe::App for ProjectDashboardApp {
                     });
                 }
 
-                if self.nav == Nav::Bin && self.bin_select_mode {
+                if !in_project_page && self.nav == Nav::Bin && self.bin_select_mode {
                     ui.add_space(6.0);
                     ui.horizontal_wrapped(|ui| {
                         if ui.button("Select all").clicked() {
@@ -546,10 +672,14 @@ impl eframe::App for ProjectDashboardApp {
                 ui.add_space(8.0);
                 match self.nav {
                     Nav::Home | Nav::Archived | Nav::Bin => {
-                        let list_height = (ui.available_height() - 6.0).max(180.0);
-                        ScrollArea::vertical().max_height(list_height).show(ui, |ui| {
-                            for project in self.filtered_projects() {
-                                let card_response = ui.group(|ui| {
+                        if let Some(project) = self.selected_project() {
+                            self.render_project_details_content(ui, dark, &project);
+                        } else {
+                            let list_height = (ui.available_height() - 6.0).max(180.0);
+                            ScrollArea::vertical().max_height(list_height).show(ui, |ui| {
+                                for project in self.filtered_projects() {
+                                    let card_response = ui
+                                        .group(|ui| {
                                     ui.horizontal(|ui| {
                                         if (self.nav == Nav::Archived && self.archive_select_mode)
                                             || (self.nav == Nav::Bin && self.bin_select_mode)
@@ -693,16 +823,19 @@ impl eframe::App for ProjectDashboardApp {
                                         ui.label("•");
                                         ui.label(egui::RichText::new(&project.main_path).italics());
                                     });
-                                });
-                                if card_response.response.hovered() {
+                                    })
+                                    .response
+                                    .interact(egui::Sense::click());
+                                if card_response.hovered() {
                                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                 }
-                                if card_response.response.clicked() {
+                                if card_response.clicked() {
                                     self.open_project_details(&project.name);
                                 }
-                                ui.add_space(6.0);
-                            }
-                        });
+                                    ui.add_space(6.0);
+                                }
+                            });
+                        }
                     }
                     Nav::About => {
                         ui.label(support_page_body(SupportPage::About));
@@ -935,58 +1068,6 @@ impl eframe::App for ProjectDashboardApp {
             }
         }
 
-        if self.project_details_open {
-            let mut open = self.project_details_open;
-            egui::Window::new("Project Details")
-                .order(egui::Order::Foreground)
-                .open(&mut open)
-                .collapsible(false)
-                .resizable(true)
-                .default_size(Vec2::new(520.0, 360.0))
-                .min_size(Vec2::new(440.0, 280.0))
-                .show(ctx, |ui| {
-                    if let Some(project) = self.selected_project() {
-                        ui.heading(&project.name);
-                        ui.add_space(6.0);
-                        ui.label(format!("Type: {}", map_framework_label(&project.project_type)));
-                        ui.label(format!("Path: {}", project.main_path));
-                        ui.label(format!("Status: {}", project.status));
-                        ui.label(format!("Created: {}", project.created_on));
-                        ui.label(format!("Edited: {}", project.edited_on));
-                        ui.add_space(8.0);
-                        ui.label(RichText::new("Builds").strong());
-                        if project.builds.is_empty() {
-                            ui.label("No builds yet.");
-                        } else {
-                            for build in &project.builds {
-                                ui.horizontal_wrapped(|ui| {
-                                    ui.label(RichText::new(&build.name).strong());
-                                    ui.label("•");
-                                    ui.label(&build.path);
-                                });
-                            }
-                        }
-                        ui.add_space(10.0);
-                        ui.horizontal(|ui| {
-                            if ui.add(brand_button("Serve")).clicked() {
-                                self.status_message =
-                                    Some(format!("Serve clicked for '{}'.", project.name));
-                            }
-                            if ui.button("Edit").clicked() {
-                                self.project_details_open = false;
-                                self.begin_edit_project(&project.name);
-                            }
-                        });
-                    } else {
-                        ui.label("Project not found.");
-                    }
-                });
-            self.project_details_open = open && self.selected_project().is_some();
-            if !self.project_details_open {
-                self.selected_project_name = None;
-            }
-        }
-
         if self.empty_bin_confirm_open {
             let mut open = self.empty_bin_confirm_open;
             let mut confirm_empty = false;
@@ -1149,7 +1230,18 @@ impl ProjectDashboardApp {
 
     fn open_project_details(&mut self, project_name: &str) {
         self.selected_project_name = Some(project_name.to_owned());
-        self.project_details_open = true;
+        self.selected_build_index = None;
+        self.selected_artifact_type = "Type".to_owned();
+        self.bridge_status_expanded = false;
+    }
+
+    fn close_project_details(&mut self) {
+        self.selected_project_name = None;
+        self.selected_build_index = None;
+        self.selected_artifact_type = "Type".to_owned();
+        self.bridge_status_expanded = false;
+        self.terminal_link_popup_open = false;
+        self.terminal_link_target = None;
     }
 
     fn selected_project(&self) -> Option<ProjectRecord> {
@@ -1158,6 +1250,225 @@ impl ProjectDashboardApp {
             .iter()
             .find(|project| project.name == *selected_name)
             .cloned()
+    }
+
+    fn render_project_details_content(
+        &mut self,
+        ui: &mut egui::Ui,
+        dark: bool,
+        project: &ProjectRecord,
+    ) {
+        ui.vertical(|ui| {
+            ui.horizontal_top(|ui| {
+                let left_width = (ui.available_width() * 0.48).max(220.0);
+                ui.allocate_ui_with_layout(
+                    Vec2::new(left_width, 96.0),
+                    Layout::top_down(Align::Min),
+                    |ui| {
+                        Frame::new()
+                            .fill(if dark {
+                                Color32::from_gray(52)
+                            } else {
+                                Color32::from_gray(224)
+                            })
+                            .inner_margin(Margin::same(10))
+                            .show(ui, |ui| {
+                                let info_text_color = if dark {
+                                    Color32::WHITE
+                                } else {
+                                    Color32::BLACK
+                                };
+                                ui.colored_label(
+                                    info_text_color,
+                                    format!("Project: {}", project.name),
+                                );
+                                ui.colored_label(
+                                    info_text_color,
+                                    format!("Project Type: {}", map_framework_label(&project.project_type)),
+                                );
+                                ui.colored_label(
+                                    info_text_color,
+                                    format!("Location: {}", project.main_path),
+                                );
+                            });
+                    },
+                );
+
+                ui.add_space(10.0);
+                ui.vertical(|ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Serve Type");
+                        let artifact_options = project_artifact_type_options(project);
+                        if !artifact_options
+                            .iter()
+                            .any(|item| item == &self.selected_artifact_type)
+                        {
+                            self.selected_artifact_type = artifact_options[0].clone();
+                        }
+                        ComboBox::from_id_salt("file-type-to-serve")
+                            .selected_text(&self.selected_artifact_type)
+                            .show_ui(ui, |ui| {
+                                for option in artifact_options {
+                                    ui.selectable_value(
+                                        &mut self.selected_artifact_type,
+                                        option.clone(),
+                                        option,
+                                    );
+                                }
+                            });
+
+                        if ui.button("Add file +").clicked() {
+                            self.status_message =
+                                Some(format!("Add build clicked for '{}'.", project.name));
+                        }
+
+                        let _ = ui.add(
+                            icon_button(themed_icon(dark, IconKind::Broadcast), 14.0)
+                                .frame(true)
+                                .min_size(Vec2::new(30.0, 26.0)),
+                        );
+
+                        if ui.add(brand_button("Serve")).clicked() {
+                            self.status_message = Some(format!("Serve clicked for '{}'.", project.name));
+                        }
+                    });
+                });
+            });
+
+            ui.add_space(10.0);
+            ScrollArea::vertical()
+                .max_height((ui.available_height() - 4.0).max(120.0))
+                .show(ui, |ui| {
+                    if project.builds.is_empty() {
+                        ui.label("No builds yet.");
+                    } else {
+                        for (index, build) in project.builds.iter().enumerate() {
+                            let selected = self.selected_build_index == Some(index);
+                            let row = ui.add_sized(
+                                [ui.available_width(), 36.0],
+                                Button::new("")
+                                    .selected(selected)
+                                    .fill(if selected {
+                                        Color32::from_rgb(25, 55, 90)
+                                    } else {
+                                        ui.style().visuals.panel_fill
+                                    }),
+                            );
+                            let rect = row.rect.shrink2(Vec2::new(10.0, 7.0));
+                            ui.painter().text(
+                                rect.left_center(),
+                                egui::Align2::LEFT_CENTER,
+                                &build.name,
+                                egui::FontId::proportional(18.0),
+                                ui.style().visuals.text_color(),
+                            );
+                            ui.painter().text(
+                                rect.right_center(),
+                                egui::Align2::RIGHT_CENTER,
+                                build_timestamp(index),
+                                egui::FontId::proportional(16.0),
+                                ui.style().visuals.weak_text_color(),
+                            );
+                            if row.clicked() {
+                                self.selected_build_index = Some(index);
+                            }
+                        }
+                    }
+                });
+        });
+    }
+
+    fn render_terminal_line(&mut self, ui: &mut egui::Ui, line: &str, font: &FontId) {
+        ui.horizontal_wrapped(|ui| {
+            let mut first = true;
+            for token in line.split_whitespace() {
+                if !first {
+                    ui.label(RichText::new(" ").font(font.clone()).color(Color32::WHITE));
+                }
+                first = false;
+
+                if is_terminal_link(token) {
+                    let response = ui.add(
+                        egui::Label::new(
+                            RichText::new(token)
+                                .font(font.clone())
+                                .color(Color32::from_rgb(66, 133, 244))
+                                .underline(),
+                        )
+                        .sense(egui::Sense::click()),
+                    );
+                    if response.clicked() {
+                        self.terminal_link_target = Some(token.to_owned());
+                        self.terminal_link_popup_open = true;
+                    }
+                } else {
+                    ui.label(RichText::new(token).font(font.clone()).color(Color32::WHITE));
+                }
+            }
+        });
+    }
+
+    fn render_bridge_status(&mut self, ui: &mut egui::Ui, project: &ProjectRecord) {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Bridge-status").strong());
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let arrow = if self.bridge_status_expanded { "▴" } else { "▾" };
+                if ui
+                    .add(
+                        Button::new(RichText::new(arrow).size(20.0).strong())
+                            .min_size(Vec2::new(24.0, 20.0)),
+                    )
+                    .clicked()
+                {
+                    self.bridge_status_expanded = !self.bridge_status_expanded;
+                }
+            });
+        });
+
+        if !self.bridge_status_expanded {
+            return;
+        }
+
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.add_sized([88.0, 88.0], egui::Label::new(RichText::new("QR").size(54.0).strong()));
+            ui.add_space(10.0);
+            ui.vertical(|ui| {
+                let is_online = project.status == "active";
+                let status = if is_online { "Online" } else { "Offline" };
+                ui.horizontal(|ui| {
+                    ui.label("Status : ");
+                    ui.label(RichText::new(status).strong());
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Port : ");
+                    ui.label(RichText::new("127.1.1.0:4000").strong());
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Device : ");
+                    ui.label(RichText::new("Web").strong());
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Type : ");
+                    ui.label(RichText::new(&self.selected_artifact_type).strong());
+                });
+            });
+            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button("Edit").clicked() {
+                        self.close_project_details();
+                        self.begin_edit_project(&project.name);
+                    }
+                    if ui.button("Restart").clicked() {
+                        self.status_message =
+                            Some(format!("Restart clicked for '{}'.", project.name));
+                    }
+                    if ui.button("Stop").clicked() {
+                        self.status_message = Some(format!("Stop clicked for '{}'.", project.name));
+                    }
+                });
+            });
+        });
     }
 
     fn archive_project(&mut self, project_name: &str) -> Result<(), String> {
@@ -1542,4 +1853,49 @@ fn map_framework_label(stored: &str) -> String {
     ProjectType::from_storage(stored)
         .map(|project_type| project_type.label().to_owned())
         .unwrap_or_else(|| stored.to_owned())
+}
+
+fn is_terminal_link(token: &str) -> bool {
+    token.starts_with("http://") || token.starts_with("https://")
+}
+
+fn build_timestamp(index: usize) -> String {
+    let minute = (index * 7 + 12) % 60;
+    let hour_24 = 9 + (index % 8);
+    let (hour_12, suffix) = if hour_24 >= 12 {
+        let hour = if hour_24 == 12 { 12 } else { hour_24 - 12 };
+        (hour, "PM")
+    } else {
+        (hour_24, "AM")
+    };
+    format!("{hour_12:02}:{minute:02} {suffix}")
+}
+
+fn project_artifact_type_options(project: &ProjectRecord) -> Vec<String> {
+    let mut options: BTreeSet<String> = BTreeSet::new();
+    for build in &project.builds {
+        if let Some(ext) = Path::new(&build.path).extension().and_then(|ext| ext.to_str()) {
+            let ext = ext.trim().to_ascii_lowercase();
+            if !ext.is_empty() {
+                options.insert(ext);
+            }
+        }
+    }
+
+    if options.is_empty() {
+        match ProjectType::from_storage(&project.project_type).unwrap_or(ProjectType::Android) {
+            ProjectType::Android => {
+                options.insert("apk".to_owned());
+                options.insert("aab".to_owned());
+            }
+            ProjectType::Flutter => {
+                options.insert("apk".to_owned());
+            }
+            _ => {
+                options.insert("custom_type".to_owned());
+            }
+        }
+    }
+    options.insert("custom_type".to_owned());
+    options.into_iter().collect()
 }
