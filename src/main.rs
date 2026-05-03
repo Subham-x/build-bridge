@@ -330,14 +330,15 @@ impl eframe::App for ProjectDashboardApp {
             panel.show(ctx, |ui| {
                 if fully_open {
                     let current_width = ui.available_width().clamp(200.0, 360.0);
+                    let panel_rect = ui.max_rect();
+                    let drag_margin = 6.0;
                     let dragging_width = ctx.input(|i| {
-                        let pointer_in_panel = i
-                            .pointer
-                            .interact_pos()
-                            .map_or(false, |pos| ui.max_rect().contains(pos));
-                        pointer_in_panel
-                            && i.pointer.primary_down()
-                            && i.pointer.delta().x.abs() > 0.0
+                        if let Some(pos) = i.pointer.interact_pos() {
+                            let near_edge = (panel_rect.right() - pos.x).abs() <= drag_margin;
+                            near_edge && i.pointer.primary_down() && i.pointer.delta().x.abs() > 0.0
+                        } else {
+                            false
+                        }
                     });
                     if dragging_width || current_width < self.sidebar_width {
                         self.sidebar_width = current_width;
@@ -392,7 +393,6 @@ impl eframe::App for ProjectDashboardApp {
 
                     if self.selected_project_name.is_some() {
                         ui.add_space(8.0);
-                        let terminal_width = ui.available_width();
                         let title_bg = if dark {
                             Color32::from_gray(52)
                         } else {
@@ -407,7 +407,6 @@ impl eframe::App for ProjectDashboardApp {
                             .fill(title_bg)
                             .inner_margin(Margin::same(6))
                             .show(ui, |ui| {
-                                ui.set_min_width(terminal_width);
                                 ui.colored_label(title_text, "Terminal");
                             });
                         Frame::new()
@@ -416,7 +415,6 @@ impl eframe::App for ProjectDashboardApp {
                             .show(ui, |ui| {
                                 let terminal_font =
                                     FontId::new(12.5, FontFamily::Name("JetBrainsMono".into()));
-                                ui.set_min_width(ui.available_width());
                                 ui.set_min_height((ui.available_height() - 4.0).max(120.0));
                                 if let Some(project_name) = self.selected_project_name.clone() {
                                     let serve_line =
