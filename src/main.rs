@@ -82,6 +82,8 @@ struct ProjectDashboardApp {
     bin_select_mode: bool,
     bin_selected: HashSet<String>,
     empty_bin_confirm_open: bool,
+    project_details_open: bool,
+    selected_project_name: Option<String>,
 }
 
 impl Default for ProjectDashboardApp {
@@ -114,6 +116,8 @@ impl Default for ProjectDashboardApp {
             bin_select_mode: false,
             bin_selected: HashSet::new(),
             empty_bin_confirm_open: false,
+            project_details_open: false,
+            selected_project_name: None,
         }
     }
 }
@@ -545,7 +549,7 @@ impl eframe::App for ProjectDashboardApp {
                         let list_height = (ui.available_height() - 6.0).max(180.0);
                         ScrollArea::vertical().max_height(list_height).show(ui, |ui| {
                             for project in self.filtered_projects() {
-                                ui.group(|ui| {
+                                let card_response = ui.group(|ui| {
                                     ui.horizontal(|ui| {
                                         if (self.nav == Nav::Archived && self.archive_select_mode)
                                             || (self.nav == Nav::Bin && self.bin_select_mode)
@@ -690,6 +694,12 @@ impl eframe::App for ProjectDashboardApp {
                                         ui.label(egui::RichText::new(&project.main_path).italics());
                                     });
                                 });
+                                if card_response.response.hovered() {
+                                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                }
+                                if card_response.response.clicked() {
+                                    self.open_project_details(&project.name);
+                                }
                                 ui.add_space(6.0);
                             }
                         });
@@ -925,6 +935,58 @@ impl eframe::App for ProjectDashboardApp {
             }
         }
 
+        if self.project_details_open {
+            let mut open = self.project_details_open;
+            egui::Window::new("Project Details")
+                .order(egui::Order::Foreground)
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(true)
+                .default_size(Vec2::new(520.0, 360.0))
+                .min_size(Vec2::new(440.0, 280.0))
+                .show(ctx, |ui| {
+                    if let Some(project) = self.selected_project() {
+                        ui.heading(&project.name);
+                        ui.add_space(6.0);
+                        ui.label(format!("Type: {}", map_framework_label(&project.project_type)));
+                        ui.label(format!("Path: {}", project.main_path));
+                        ui.label(format!("Status: {}", project.status));
+                        ui.label(format!("Created: {}", project.created_on));
+                        ui.label(format!("Edited: {}", project.edited_on));
+                        ui.add_space(8.0);
+                        ui.label(RichText::new("Builds").strong());
+                        if project.builds.is_empty() {
+                            ui.label("No builds yet.");
+                        } else {
+                            for build in &project.builds {
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label(RichText::new(&build.name).strong());
+                                    ui.label("•");
+                                    ui.label(&build.path);
+                                });
+                            }
+                        }
+                        ui.add_space(10.0);
+                        ui.horizontal(|ui| {
+                            if ui.add(brand_button("Serve")).clicked() {
+                                self.status_message =
+                                    Some(format!("Serve clicked for '{}'.", project.name));
+                            }
+                            if ui.button("Edit").clicked() {
+                                self.project_details_open = false;
+                                self.begin_edit_project(&project.name);
+                            }
+                        });
+                    } else {
+                        ui.label("Project not found.");
+                    }
+                });
+            self.project_details_open = open && self.selected_project().is_some();
+            if !self.project_details_open {
+                self.selected_project_name = None;
+            }
+        }
+
         if self.empty_bin_confirm_open {
             let mut open = self.empty_bin_confirm_open;
             let mut confirm_empty = false;
@@ -1083,6 +1145,19 @@ impl ProjectDashboardApp {
             self.form_error = None;
             self.create_modal_open = true;
         }
+    }
+
+    fn open_project_details(&mut self, project_name: &str) {
+        self.selected_project_name = Some(project_name.to_owned());
+        self.project_details_open = true;
+    }
+
+    fn selected_project(&self) -> Option<ProjectRecord> {
+        let selected_name = self.selected_project_name.as_ref()?;
+        self.projects
+            .iter()
+            .find(|project| project.name == *selected_name)
+            .cloned()
     }
 
     fn archive_project(&mut self, project_name: &str) -> Result<(), String> {
