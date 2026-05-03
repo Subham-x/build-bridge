@@ -1488,9 +1488,32 @@ impl ProjectDashboardApp {
                         );
                     }
                     if response.clicked() {
-                        self.terminal_link_target = Some(token.to_owned());
-                        self.terminal_link_popup_open = true;
+                        let open_directly = ui.input(|i| i.modifiers.ctrl);
+                        if open_directly {
+                            ui.ctx().open_url(egui::OpenUrl {
+                                url: token.to_owned(),
+                                new_tab: true,
+                            });
+                        } else {
+                            self.terminal_link_target = Some(token.to_owned());
+                            self.terminal_link_popup_open = true;
+                        }
                     }
+
+                    response.context_menu(|ui| {
+                        ui.label("Copy and Open (Ctrl + Click)");
+                        if ui.button("Copy").clicked() {
+                            ui.ctx().copy_text(token.to_owned());
+                            ui.close_menu();
+                        }
+                        if ui.button("Open").clicked() {
+                            ui.ctx().open_url(egui::OpenUrl {
+                                url: token.to_owned(),
+                                new_tab: true,
+                            });
+                            ui.close_menu();
+                        }
+                    });
                 } else {
                     ui.label(RichText::new(token).font(font.clone()).color(Color32::WHITE));
                 }
