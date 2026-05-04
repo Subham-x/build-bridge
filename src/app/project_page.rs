@@ -295,7 +295,7 @@ impl ProjectDashboardApp {
                                                     .get(&TextStyle::Button)
                                                     .cloned()
                                                     .unwrap_or_else(|| FontId::proportional(14.0));
-                                                let fixed_width_labels = ["abdominoscopy", "Permanent Delete"];
+                                                let fixed_width_labels = ["abdominoscopy", "Permanent Delete This"];
                                                 let max_text_width = fixed_width_labels
                                                     .iter()
                                                     .map(|label| {
@@ -329,9 +329,13 @@ impl ProjectDashboardApp {
                                                     ui.set_width(menu_width);
                                                     let row_width = ui.available_width();
 
+                                                    let danger_text = Color32::from_rgb(255, 0, 79);
+                                                    let danger_bg = Color32::from_rgba_unmultiplied(255, 0, 79, 40);
                                                     let menu_row = |ui: &mut egui::Ui,
                                                                         icon_kind: IconKind,
-                                                                        label: RichText|
+                                                                        label: RichText,
+                                                                        icon_tint: Option<Color32>,
+                                                                        hover_bg: Option<Color32>|
                                                      -> egui::Response {
                                                         let row_height = ui.spacing().interact_size.y;
                                                         let (rect, response) = ui.allocate_exact_size(
@@ -350,10 +354,11 @@ impl ProjectDashboardApp {
                                                         });
                                                         let visuals = ui.style().interact(&response);
                                                         if pointer_over || pointer_down {
+                                                            let fill = hover_bg.unwrap_or(visuals.bg_fill);
                                                             ui.painter().rect_filled(
                                                                 rect,
                                                                 CornerRadius::same(6),
-                                                                visuals.bg_fill,
+                                                                fill,
                                                             );
                                                         }
                                                         ui.scope_builder(
@@ -362,10 +367,14 @@ impl ProjectDashboardApp {
                                                                 .layout(Layout::left_to_right(Align::Center)),
                                                             |ui| {
                                                                 ui.add_space(ui.spacing().button_padding.x);
-                                                                ui.add(icon_image(
+                                                                let mut icon = icon_image(
                                                                     themed_icon(dark, icon_kind),
                                                                     icon_size,
-                                                                ));
+                                                                );
+                                                                if let Some(tint) = icon_tint {
+                                                                    icon = icon.tint(tint);
+                                                                }
+                                                                ui.add(icon);
                                                                 ui.add_space(icon_gap);
                                                                 ui.add(Label::new(label).selectable(false));
                                                             },
@@ -376,8 +385,13 @@ impl ProjectDashboardApp {
                                                         response
                                                     };
 
-                                                    let edit_response =
-                                                        menu_row(ui, IconKind::ActionEdit, RichText::new("Edit"));
+                                                    let edit_response = menu_row(
+                                                        ui,
+                                                        IconKind::ActionEdit,
+                                                        RichText::new("Edit"),
+                                                        None,
+                                                        None,
+                                                    );
                                                     if edit_response.clicked() {
                                                         self.begin_edit_project(&project.name);
                                                         ui.close();
@@ -388,6 +402,8 @@ impl ProjectDashboardApp {
                                                             ui,
                                                             IconKind::ActionArchive,
                                                             RichText::new("Archive"),
+                                                            None,
+                                                            None,
                                                         );
                                                         if archive_response.clicked() {
                                                             if let Err(err) = self.archive_project(&project.name) {
@@ -401,6 +417,8 @@ impl ProjectDashboardApp {
                                                             ui,
                                                             IconKind::ActionArchive,
                                                             RichText::new("Unarchive"),
+                                                            None,
+                                                            None,
                                                         );
                                                         if unarchive_response.clicked() {
                                                             if let Err(err) = self.unarchive_project(&project.name) {
@@ -412,13 +430,14 @@ impl ProjectDashboardApp {
                                                     }
 
                                                     if self.nav != super::Nav::Bin {
-                                                        let bin_label = if self.nav == super::Nav::Home {
-                                                            RichText::new("Bin").color(Color32::from_rgb(229, 57, 53))
-                                                        } else {
-                                                            RichText::new("Bin")
-                                                        };
-                                                        let bin_response =
-                                                            menu_row(ui, IconKind::Trash, bin_label);
+                                                        let bin_label = RichText::new("Bin").color(danger_text);
+                                                        let bin_response = menu_row(
+                                                            ui,
+                                                            IconKind::Trash,
+                                                            bin_label,
+                                                            Some(danger_text),
+                                                            Some(danger_bg),
+                                                        );
                                                         if bin_response.clicked() {
                                                             if let Err(err) = self.bin_project(&project.name) {
                                                                 self.project_action_error = Some(err);
@@ -433,6 +452,8 @@ impl ProjectDashboardApp {
                                                             ui,
                                                             IconKind::ActionArchive,
                                                             RichText::new("Restore"),
+                                                            None,
+                                                            None,
                                                         );
                                                         if restore_response.clicked() {
                                                             if let Err(err) = self.restore_project(&project.name) {
@@ -445,8 +466,9 @@ impl ProjectDashboardApp {
                                                         let delete_response = menu_row(
                                                             ui,
                                                             IconKind::ActionDelete,
-                                                            RichText::new("Permanent Delete")
-                                                                .color(Color32::from_rgb(229, 57, 53)),
+                                                            RichText::new("Permanent Delete").color(danger_text),
+                                                            Some(danger_text),
+                                                            Some(danger_bg),
                                                         );
                                                         if delete_response.clicked() {
                                                             if let Err(err) = self.permanent_delete_project(&project.name) {
