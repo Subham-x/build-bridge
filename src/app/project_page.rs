@@ -1,10 +1,10 @@
-use super::{build_timestamp, map_framework_label, project_artifact_type_options, support_page_body};
-use crate::models::{CreateProjectForm, ProjectRecord};
+use super::{map_framework_label, project_artifact_type_options, support_page_body};
+use crate::models::{CreateProjectForm, ProjectRecord, ProjectType};
 use super::ProjectDashboardApp;
 use crate::icons::{icon_button, icon_image, themed_icon, IconKind};
 use eframe::egui::{
-    self, Align, Button, Color32, CornerRadius, FontId, Frame, Label, Layout, Margin, RichText,
-    ScrollArea, Stroke, StrokeKind, TextEdit, TextStyle, Vec2,
+    self, Align, Align2, Button, Color32, CornerRadius, FontId, Frame, Label, Layout, Margin,
+    RichText, ScrollArea, Sense, Stroke, StrokeKind, TextEdit, TextStyle, Vec2,
 };
 
 impl ProjectDashboardApp {
@@ -751,39 +751,70 @@ impl ProjectDashboardApp {
             ScrollArea::vertical()
                 .max_height((ui.available_height() - 4.0).max(120.0))
                 .show(ui, |ui| {
+                    let project_type =
+                        ProjectType::from_storage(&project.project_type).unwrap_or(ProjectType::Android);
+                    if project_type != ProjectType::Android {
+                        ui.add_space(6.0);
+                        ui.label(
+                            RichText::new("UPCOMING...")
+                                .italics()
+                                .color(ui.style().visuals.weak_text_color()),
+                        );
+                        return;
+                    }
+
                     if project.builds.is_empty() {
                         ui.label("No builds yet.");
                     } else {
                         for (index, build) in project.builds.iter().enumerate() {
                             let selected = self.selected_build_index == Some(index);
-                            let row = ui.add_sized(
-                                [ui.available_width(), 36.0],
-                                Button::new("")
-                                    .selected(selected)
-                                    .fill(if selected {
-                                        Color32::from_rgb(25, 55, 90)
-                                    } else {
-                                        ui.style().visuals.panel_fill
-                                    }),
+                            let row_height = 52.0;
+                            let (rect, response) = ui.allocate_exact_size(
+                                Vec2::new(ui.available_width(), row_height),
+                                Sense::click(),
                             );
-                            let rect = row.rect.shrink2(Vec2::new(10.0, 7.0));
+                            let bg_fill = if selected {
+                                Color32::from_rgb(25, 55, 90)
+                            } else {
+                                ui.style().visuals.panel_fill
+                            };
+                            ui.painter().rect_filled(rect, CornerRadius::same(6), bg_fill);
+
+                            let text_rect = rect.shrink2(Vec2::new(10.0, 6.0));
+                            let created_label =
+                                build.created_on.as_deref().unwrap_or("Unknown time");
                             ui.painter().text(
-                                rect.left_center(),
-                                egui::Align2::LEFT_CENTER,
+                                text_rect.left_top(),
+                                Align2::LEFT_TOP,
                                 &build.name,
-                                egui::FontId::proportional(18.0),
+                                FontId::proportional(18.0),
                                 ui.style().visuals.text_color(),
                             );
                             ui.painter().text(
-                                rect.right_center(),
-                                egui::Align2::RIGHT_CENTER,
-                                build_timestamp(index),
-                                egui::FontId::proportional(16.0),
+                                text_rect.right_top(),
+                                Align2::RIGHT_TOP,
+                                created_label,
+                                FontId::proportional(14.0),
                                 ui.style().visuals.weak_text_color(),
                             );
-                            if row.clicked() {
+
+                            let path_rect = egui::Rect::from_min_max(
+                                egui::pos2(text_rect.left(), text_rect.top() + 22.0),
+                                egui::pos2(text_rect.right(), text_rect.bottom()),
+                            );
+                            ui.scope_builder(egui::UiBuilder::new().max_rect(path_rect), |ui| {
+                                ui.label(
+                                    RichText::new(&build.path)
+                                        .italics()
+                                        .size(12.0)
+                                        .color(ui.style().visuals.weak_text_color()),
+                                );
+                            });
+
+                            if response.clicked() {
                                 self.selected_build_index = Some(index);
                             }
+                            ui.add_space(6.0);
                         }
                     }
                 });

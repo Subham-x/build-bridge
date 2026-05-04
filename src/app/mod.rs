@@ -7,12 +7,14 @@ mod theme_popup;
 use crate::config::{init_app_config, init_preferences, save_preferences, AppConfig, Preferences};
 
 use crate::icons::{icon_image, themed_icon, IconKind};
-use crate::models::{CreateProjectForm, ProjectRecord, ProjectType};
+use crate::models::{BuildEntry, CreateProjectForm, ProjectRecord, ProjectType};
 use crate::storage::{current_date, init_storage, save_projects};
+use chrono::{DateTime, Local};
 use eframe::egui::{
     self, Button, Color32, ComboBox, RichText, TextEdit, ThemePreference, TopBottomPanel, Vec2,
 };
 use std::collections::{BTreeSet, HashSet};
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -647,6 +649,7 @@ impl ProjectDashboardApp {
         self.selected_build_index = None;
         self.selected_artifact_type = "Type".to_owned();
         self.bridge_status_expanded = false;
+        self.refresh_android_builds(project_name);
     }
 
     fn close_project_details(&mut self) {
@@ -664,6 +667,98 @@ impl ProjectDashboardApp {
             .iter()
             .find(|project| project.name == *selected_name)
             .cloned()
+    }
+
+    fn refresh_android_builds(&mut self, project_name: &str) {
+        let (project_type, main_path, existing_builds) = match self
+            .projects
+            .iter()
+            .find(|project| project.name == project_name)
+        {
+            Some(project) => (
+                ProjectType::from_storage(&project.project_type).unwrap_or(ProjectType::Android),
+                project.main_path.clone(),
+                project.builds.clone(),
+            ),
+            None => return,
+        };
+        if project_type != ProjectType::Android {
+            return;
+        }
+
+        let builds = match self.detect_android_apk_builds(Path::new(&main_path)) {
+            Ok(builds) => builds,
+            Err(err) => {
+                self.project_action_error = Some(err);
+                return;
+            }
+        };
+
+        if existing_builds != builds {
+            if let Some(project) = self
+                .projects
+                .iter_mut()
+                .find(|project| project.name == project_name)
+            {
+                project.builds = builds;
+            }
+            if let Err(err) = self.persist_projects() {
+                self.project_action_error = Some(err);
+            }
+        }
+    }
+
+    fn detect_android_apk_builds(&self, project_root: &Path) -> Result<Vec<BuildEntry>, String> {
+        let output_dir = project_root.join("app").join("build").join("outputs");
+        if !output_dir.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut files = Vec::new();
+        self.collect_build_files(&output_dir, &mut files)?;
+
+        let mut builds = Vec::new();
+        for path in files {
+            let ext = path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            if ext != "apk" {
+                continue;
+            }
+
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("build.apk")
+                .to_owned();
+            let created_on = file_timestamp(&path);
+            builds.push(BuildEntry {
+                name,
+                path: path.display().to_string(),
+                created_on,
+            });
+        }
+
+        builds.sort_by(|a, b| b.created_on.cmp(&a.created_on).then_with(|| a.name.cmp(&b.name)));
+        Ok(builds)
+    }
+
+    fn collect_build_files(&self, dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+        for entry in fs::read_dir(dir)
+            .map_err(|err| format!("Failed to read '{}': {err}", dir.display()))?
+        {
+            let entry = entry
+                .map_err(|err| format!("Failed to read entry in '{}': {err}", dir.display()))?;
+            let path = entry.path();
+            if path.is_dir() {
+                self.collect_build_files(&path, files)?;
+            } else {
+                files.push(path);
+            }
+        }
+        Ok(())
     }
 
     fn filtered_projects(&self) -> Vec<ProjectRecord> {
@@ -1017,20 +1112,15 @@ fn map_framework_label(stored: &str) -> String {
         .unwrap_or_else(|| stored.to_owned())
 }
 
-fn is_terminal_link(token: &str) -> bool {
-    token.starts_with("http://") || token.starts_with("https://")
+fn file_timestamp(path: &Path) -> Option<String> {
+    let metadata = fs::metadata(path).ok()?;
+    let timestamp = metadata.created().or_else(|_| metadata.modified()).ok()?;
+    let datetime: DateTime<Local> = timestamp.into();
+    Some(datetime.format("%Y-%m-%d %H:%M").to_string())
 }
 
-fn build_timestamp(index: usize) -> String {
-    let minute = (index * 7 + 12) % 60;
-    let hour_24 = 9 + (index % 8);
-    let (hour_12, suffix) = if hour_24 >= 12 {
-        let hour = if hour_24 == 12 { 12 } else { hour_24 - 12 };
-        (hour, "PM")
-    } else {
-        (hour_24, "AM")
-    };
-    format!("{hour_12:02}:{minute:02} {suffix}")
+fn is_terminal_link(token: &str) -> bool {
+    token.starts_with("http://") || token.starts_with("https://")
 }
 
 fn project_artifact_type_options(project: &ProjectRecord) -> Vec<String> {

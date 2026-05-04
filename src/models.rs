@@ -59,10 +59,12 @@ pub struct CreateProjectForm {
     pub project_type: ProjectType,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct BuildEntry {
     pub name: String,
     pub path: String,
+    #[serde(default)]
+    pub created_on: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
