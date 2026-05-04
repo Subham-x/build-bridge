@@ -3,7 +3,7 @@ use crate::models::{CreateProjectForm, ProjectRecord};
 use super::ProjectDashboardApp;
 use crate::icons::{icon_button, icon_image, themed_icon, IconKind};
 use eframe::egui::{
-    self, Align, Button, Color32, CornerRadius, FontId, Frame, Layout, Margin, RichText,
+    self, Align, Button, Color32, CornerRadius, FontId, Frame, Label, Layout, Margin, RichText,
     ScrollArea, Stroke, StrokeKind, TextEdit, TextStyle, Vec2,
 };
 
@@ -289,78 +289,105 @@ impl ProjectDashboardApp {
                                             ui.label(RichText::new(&project.name).strong().color(name_color));
 
                                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                                let button_font = ui
+                                                    .style()
+                                                    .text_styles
+                                                    .get(&TextStyle::Button)
+                                                    .cloned()
+                                                    .unwrap_or_else(|| FontId::proportional(14.0));
+                                                let fixed_width_labels = ["abdominoscopy", "Permanent Delete"];
+                                                let max_text_width = fixed_width_labels
+                                                    .iter()
+                                                    .map(|label| {
+                                                        ui.ctx().fonts_mut(|fonts| {
+                                                            fonts
+                                                                .layout_no_wrap(
+                                                                    (*label).to_owned(),
+                                                                    button_font.clone(),
+                                                                    Color32::WHITE,
+                                                                )
+                                                                .size()
+                                                                .x
+                                                        })
+                                                    })
+                                                    .fold(0.0_f32, f32::max);
+                                                let icon_size = 14.0;
+                                                let icon_gap = ui.spacing().item_spacing.x;
+                                                let button_padding = ui.spacing().button_padding.x * 2.0;
+                                                let menu_width =
+                                                    (icon_size + icon_gap + max_text_width + button_padding).ceil();
+
+                                                let ctx_style_backup = ui.ctx().style().clone();
+                                                let mut ctx_style = (*ctx_style_backup).clone();
+                                                ctx_style.spacing.menu_margin = Margin::same(0);
+                                                ctx_style.spacing.menu_width = menu_width;
+                                                ui.ctx().set_style(ctx_style);
+
                                                 let menu_response = ui.menu_image_button(
                                                     icon_image(themed_icon(dark, IconKind::MoreVert), 16.0),
                                                     |ui| {
-                                                    let mut menu_labels = Vec::new();
-                                                    menu_labels.push("Edit");
-                                                    if self.nav != super::Nav::Archived {
-                                                        menu_labels.push("Archive");
-                                                    } else {
-                                                        menu_labels.push("Unarchive");
-                                                    }
-                                                    if self.nav != super::Nav::Bin {
-                                                        menu_labels.push("Bin");
-                                                    } else {
-                                                        menu_labels.push("Restore");
-                                                        menu_labels.push("Permanent Delete");
-                                                    }
+                                                    ui.set_width(menu_width);
+                                                    let row_width = ui.available_width();
 
-                                                    let button_font = ui
-                                                        .style()
-                                                        .text_styles
-                                                        .get(&TextStyle::Button)
-                                                        .cloned()
-                                                        .unwrap_or_else(|| FontId::proportional(14.0));
-                                                    let max_text_width = menu_labels
-                                                        .iter()
-                                                        .map(|label| {
-                                                            ui.ctx().fonts_mut(|fonts| {
-                                                                fonts
-                                                                    .layout_no_wrap(
-                                                                        (*label).to_owned(),
-                                                                        button_font.clone(),
-                                                                        Color32::WHITE,
-                                                                    )
-                                                                    .size()
-                                                                    .x
-                                                            })
-                                                        })
-                                                        .fold(0.0_f32, f32::max);
-                                                    let icon_size = 14.0;
-                                                    let icon_gap = ui.spacing().item_spacing.x;
-                                                    let button_padding = ui.spacing().button_padding.x * 2.0;
-                                                    let menu_width = (icon_size + icon_gap + max_text_width + button_padding)
-                                                        .ceil();
-                                                    ui.set_min_width(menu_width);
+                                                    let menu_row = |ui: &mut egui::Ui,
+                                                                        icon_kind: IconKind,
+                                                                        label: RichText|
+                                                     -> egui::Response {
+                                                        let row_height = ui.spacing().interact_size.y;
+                                                        let (rect, response) = ui.allocate_exact_size(
+                                                            Vec2::new(row_width, row_height),
+                                                            egui::Sense::click(),
+                                                        );
+                                                        let pointer_over = ui
+                                                            .ctx()
+                                                            .pointer_hover_pos()
+                                                            .map_or(false, |pos| rect.contains(pos));
+                                                        let pointer_down = ui.ctx().input(|i| {
+                                                            i.pointer.primary_down()
+                                                                && i.pointer
+                                                                    .interact_pos()
+                                                                    .map_or(false, |pos| rect.contains(pos))
+                                                        });
+                                                        let visuals = ui.style().interact(&response);
+                                                        if pointer_over || pointer_down {
+                                                            ui.painter().rect_filled(
+                                                                rect,
+                                                                CornerRadius::same(6),
+                                                                visuals.bg_fill,
+                                                            );
+                                                        }
+                                                        ui.scope_builder(
+                                                            egui::UiBuilder::new()
+                                                                .max_rect(rect)
+                                                                .layout(Layout::left_to_right(Align::Center)),
+                                                            |ui| {
+                                                                ui.add_space(ui.spacing().button_padding.x);
+                                                                ui.add(icon_image(
+                                                                    themed_icon(dark, icon_kind),
+                                                                    icon_size,
+                                                                ));
+                                                                ui.add_space(icon_gap);
+                                                                ui.add(Label::new(label).selectable(false));
+                                                            },
+                                                        );
+                                                        if pointer_over {
+                                                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                                                        }
+                                                        response
+                                                    };
 
-                                                    let edit_response = ui.add_sized(
-                                                        [menu_width, 0.0],
-                                                        Button::image_and_text(
-                                                            icon_image(
-                                                                themed_icon(dark, IconKind::ActionEdit),
-                                                                icon_size,
-                                                            ),
-                                                            "Edit",
-                                                        )
-                                                        .frame(true),
-                                                    );
+                                                    let edit_response =
+                                                        menu_row(ui, IconKind::ActionEdit, RichText::new("Edit"));
                                                     if edit_response.clicked() {
                                                         self.begin_edit_project(&project.name);
                                                         ui.close();
                                                     }
                                                     block_rects.push(edit_response.rect);
                                                     if self.nav != super::Nav::Archived {
-                                                        let archive_response = ui.add_sized(
-                                                            [menu_width, 0.0],
-                                                            Button::image_and_text(
-                                                                icon_image(
-                                                                    themed_icon(dark, IconKind::ActionArchive),
-                                                                    icon_size,
-                                                                ),
-                                                                "Archive",
-                                                            )
-                                                            .frame(true),
+                                                        let archive_response = menu_row(
+                                                            ui,
+                                                            IconKind::ActionArchive,
+                                                            RichText::new("Archive"),
                                                         );
                                                         if archive_response.clicked() {
                                                             if let Err(err) = self.archive_project(&project.name) {
@@ -370,16 +397,10 @@ impl ProjectDashboardApp {
                                                         }
                                                         block_rects.push(archive_response.rect);
                                                     } else {
-                                                        let unarchive_response = ui.add_sized(
-                                                            [menu_width, 0.0],
-                                                            Button::image_and_text(
-                                                                icon_image(
-                                                                    themed_icon(dark, IconKind::ActionArchive),
-                                                                    icon_size,
-                                                                ),
-                                                                "Unarchive",
-                                                            )
-                                                            .frame(true),
+                                                        let unarchive_response = menu_row(
+                                                            ui,
+                                                            IconKind::ActionArchive,
+                                                            RichText::new("Unarchive"),
                                                         );
                                                         if unarchive_response.clicked() {
                                                             if let Err(err) = self.unarchive_project(&project.name) {
@@ -396,14 +417,8 @@ impl ProjectDashboardApp {
                                                         } else {
                                                             RichText::new("Bin")
                                                         };
-                                                        let bin_response = ui.add_sized(
-                                                            [menu_width, 0.0],
-                                                            Button::image_and_text(
-                                                                icon_image(themed_icon(dark, IconKind::Trash), icon_size),
-                                                                bin_label,
-                                                            )
-                                                            .frame(true),
-                                                        );
+                                                        let bin_response =
+                                                            menu_row(ui, IconKind::Trash, bin_label);
                                                         if bin_response.clicked() {
                                                             if let Err(err) = self.bin_project(&project.name) {
                                                                 self.project_action_error = Some(err);
@@ -414,16 +429,10 @@ impl ProjectDashboardApp {
                                                     }
 
                                                     if self.nav == super::Nav::Bin {
-                                                        let restore_response = ui.add_sized(
-                                                            [menu_width, 0.0],
-                                                            Button::image_and_text(
-                                                                icon_image(
-                                                                    themed_icon(dark, IconKind::ActionArchive),
-                                                                    icon_size,
-                                                                ),
-                                                                "Restore",
-                                                            )
-                                                            .frame(true),
+                                                        let restore_response = menu_row(
+                                                            ui,
+                                                            IconKind::ActionArchive,
+                                                            RichText::new("Restore"),
                                                         );
                                                         if restore_response.clicked() {
                                                             if let Err(err) = self.restore_project(&project.name) {
@@ -433,17 +442,11 @@ impl ProjectDashboardApp {
                                                         }
                                                         block_rects.push(restore_response.rect);
 
-                                                        let delete_response = ui.add_sized(
-                                                            [menu_width, 0.0],
-                                                            Button::image_and_text(
-                                                                icon_image(
-                                                                    themed_icon(dark, IconKind::ActionDelete),
-                                                                    icon_size,
-                                                                ),
-                                                                RichText::new("Permanent Delete")
-                                                                    .color(Color32::from_rgb(229, 57, 53)),
-                                                            )
-                                                            .frame(true),
+                                                        let delete_response = menu_row(
+                                                            ui,
+                                                            IconKind::ActionDelete,
+                                                            RichText::new("Permanent Delete")
+                                                                .color(Color32::from_rgb(229, 57, 53)),
                                                         );
                                                         if delete_response.clicked() {
                                                             if let Err(err) = self.permanent_delete_project(&project.name) {
@@ -455,6 +458,7 @@ impl ProjectDashboardApp {
                                                     }
 
                                                 });
+                                                ui.ctx().set_style(ctx_style_backup);
                                                 block_rects.push(menu_response.response.rect);
                                                 let serve_settings_response = ui
                                                     .add(
