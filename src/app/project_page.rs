@@ -3,8 +3,8 @@ use crate::models::{CreateProjectForm, ProjectRecord};
 use super::ProjectDashboardApp;
 use crate::icons::{icon_button, icon_image, themed_icon, IconKind};
 use eframe::egui::{
-    self, Align, Button, Color32, CornerRadius, Frame, Layout, Margin, RichText, ScrollArea,
-    Stroke, StrokeKind, TextEdit, Vec2,
+    self, Align, Button, Color32, CornerRadius, FontId, Frame, Layout, Margin, RichText,
+    ScrollArea, Stroke, StrokeKind, TextEdit, TextStyle, Vec2,
 };
 
 impl ProjectDashboardApp {
@@ -292,107 +292,166 @@ impl ProjectDashboardApp {
                                                 let menu_response = ui.menu_image_button(
                                                     icon_image(themed_icon(dark, IconKind::MoreVert), 16.0),
                                                     |ui| {
-                                                    ui.horizontal(|ui| {
-                                                        ui.add(icon_image(themed_icon(dark, IconKind::ActionEdit), 14.0));
-                                                        let edit_response = ui.add_sized(
-                                                            [ui.available_width(), 0.0],
-                                                            Button::new("Edit").frame(false),
+                                                    let mut menu_labels = Vec::new();
+                                                    menu_labels.push("Edit");
+                                                    if self.nav != super::Nav::Archived {
+                                                        menu_labels.push("Archive");
+                                                    } else {
+                                                        menu_labels.push("Unarchive");
+                                                    }
+                                                    if self.nav != super::Nav::Bin {
+                                                        menu_labels.push("Bin");
+                                                    } else {
+                                                        menu_labels.push("Restore");
+                                                        menu_labels.push("Permanent Delete");
+                                                    }
+
+                                                    let button_font = ui
+                                                        .style()
+                                                        .text_styles
+                                                        .get(&TextStyle::Button)
+                                                        .cloned()
+                                                        .unwrap_or_else(|| FontId::proportional(14.0));
+                                                    let max_text_width = menu_labels
+                                                        .iter()
+                                                        .map(|label| {
+                                                            ui.ctx().fonts_mut(|fonts| {
+                                                                fonts
+                                                                    .layout_no_wrap(
+                                                                        (*label).to_owned(),
+                                                                        button_font.clone(),
+                                                                        Color32::WHITE,
+                                                                    )
+                                                                    .size()
+                                                                    .x
+                                                            })
+                                                        })
+                                                        .fold(0.0_f32, f32::max);
+                                                    let icon_size = 14.0;
+                                                    let icon_gap = ui.spacing().item_spacing.x;
+                                                    let button_padding = ui.spacing().button_padding.x * 2.0;
+                                                    let menu_width = (icon_size + icon_gap + max_text_width + button_padding)
+                                                        .ceil();
+                                                    ui.set_min_width(menu_width);
+
+                                                    let edit_response = ui.add_sized(
+                                                        [menu_width, 0.0],
+                                                        Button::image_and_text(
+                                                            icon_image(
+                                                                themed_icon(dark, IconKind::ActionEdit),
+                                                                icon_size,
+                                                            ),
+                                                            "Edit",
+                                                        )
+                                                        .frame(true),
+                                                    );
+                                                    if edit_response.clicked() {
+                                                        self.begin_edit_project(&project.name);
+                                                        ui.close();
+                                                    }
+                                                    block_rects.push(edit_response.rect);
+                                                    if self.nav != super::Nav::Archived {
+                                                        let archive_response = ui.add_sized(
+                                                            [menu_width, 0.0],
+                                                            Button::image_and_text(
+                                                                icon_image(
+                                                                    themed_icon(dark, IconKind::ActionArchive),
+                                                                    icon_size,
+                                                                ),
+                                                                "Archive",
+                                                            )
+                                                            .frame(true),
                                                         );
-                                                        if edit_response.clicked() {
-                                                            self.begin_edit_project(&project.name);
+                                                        if archive_response.clicked() {
+                                                            if let Err(err) = self.archive_project(&project.name) {
+                                                                self.project_action_error = Some(err);
+                                                            }
                                                             ui.close();
                                                         }
-                                                        block_rects.push(edit_response.rect);
-                                                    });
-                                                    if self.nav != super::Nav::Archived {
-                                                        ui.horizontal(|ui| {
-                                                            ui.add(icon_image(themed_icon(dark, IconKind::ActionArchive), 14.0));
-                                                            let archive_response = ui.add_sized(
-                                                                [ui.available_width(), 0.0],
-                                                                Button::new("Archive").frame(false),
-                                                            );
-                                                            if archive_response.clicked() {
-                                                                if let Err(err) = self.archive_project(&project.name) {
-                                                                    self.project_action_error = Some(err);
-                                                                }
-                                                                ui.close();
-                                                            }
-                                                            block_rects.push(archive_response.rect);
-                                                        });
+                                                        block_rects.push(archive_response.rect);
                                                     } else {
-                                                        ui.horizontal(|ui| {
-                                                            ui.add(icon_image(themed_icon(dark, IconKind::ActionArchive), 14.0));
-                                                            let unarchive_response = ui.add_sized(
-                                                                [ui.available_width(), 0.0],
-                                                                Button::new("Unarchive").frame(false),
-                                                            );
-                                                            if unarchive_response.clicked() {
-                                                                if let Err(err) = self.unarchive_project(&project.name) {
-                                                                    self.project_action_error = Some(err);
-                                                                }
-                                                                ui.close();
+                                                        let unarchive_response = ui.add_sized(
+                                                            [menu_width, 0.0],
+                                                            Button::image_and_text(
+                                                                icon_image(
+                                                                    themed_icon(dark, IconKind::ActionArchive),
+                                                                    icon_size,
+                                                                ),
+                                                                "Unarchive",
+                                                            )
+                                                            .frame(true),
+                                                        );
+                                                        if unarchive_response.clicked() {
+                                                            if let Err(err) = self.unarchive_project(&project.name) {
+                                                                self.project_action_error = Some(err);
                                                             }
-                                                            block_rects.push(unarchive_response.rect);
-                                                        });
+                                                            ui.close();
+                                                        }
+                                                        block_rects.push(unarchive_response.rect);
                                                     }
 
                                                     if self.nav != super::Nav::Bin {
-                                                        ui.horizontal(|ui| {
-                                                            ui.add(icon_image(themed_icon(dark, IconKind::Trash), 14.0));
-                                                            let bin_button = if self.nav == super::Nav::Home {
-                                                                Button::new(
-                                                                    RichText::new("Bin").color(Color32::from_rgb(229, 57, 53)),
-                                                                )
-                                                            } else {
-                                                                Button::new("Bin")
-                                                            };
-                                                            let bin_response = ui.add_sized(
-                                                                [ui.available_width(), 0.0],
-                                                                bin_button.frame(false),
-                                                            );
-                                                            if bin_response.clicked() {
-                                                                if let Err(err) = self.bin_project(&project.name) {
-                                                                    self.project_action_error = Some(err);
-                                                                }
-                                                                ui.close();
+                                                        let bin_label = if self.nav == super::Nav::Home {
+                                                            RichText::new("Bin").color(Color32::from_rgb(229, 57, 53))
+                                                        } else {
+                                                            RichText::new("Bin")
+                                                        };
+                                                        let bin_response = ui.add_sized(
+                                                            [menu_width, 0.0],
+                                                            Button::image_and_text(
+                                                                icon_image(themed_icon(dark, IconKind::Trash), icon_size),
+                                                                bin_label,
+                                                            )
+                                                            .frame(true),
+                                                        );
+                                                        if bin_response.clicked() {
+                                                            if let Err(err) = self.bin_project(&project.name) {
+                                                                self.project_action_error = Some(err);
                                                             }
-                                                            block_rects.push(bin_response.rect);
-                                                        });
+                                                            ui.close();
+                                                        }
+                                                        block_rects.push(bin_response.rect);
                                                     }
 
                                                     if self.nav == super::Nav::Bin {
-                                                        ui.horizontal(|ui| {
-                                                            ui.add(icon_image(themed_icon(dark, IconKind::ActionArchive), 14.0));
-                                                            let restore_response = ui.add_sized(
-                                                                [ui.available_width(), 0.0],
-                                                                Button::new("Restore").frame(false),
-                                                            );
-                                                            if restore_response.clicked() {
-                                                                if let Err(err) = self.restore_project(&project.name) {
-                                                                    self.project_action_error = Some(err);
-                                                                }
-                                                                ui.close();
+                                                        let restore_response = ui.add_sized(
+                                                            [menu_width, 0.0],
+                                                            Button::image_and_text(
+                                                                icon_image(
+                                                                    themed_icon(dark, IconKind::ActionArchive),
+                                                                    icon_size,
+                                                                ),
+                                                                "Restore",
+                                                            )
+                                                            .frame(true),
+                                                        );
+                                                        if restore_response.clicked() {
+                                                            if let Err(err) = self.restore_project(&project.name) {
+                                                                self.project_action_error = Some(err);
                                                             }
-                                                            block_rects.push(restore_response.rect);
-                                                        });
-                                                        ui.horizontal(|ui| {
-                                                            ui.add(icon_image(themed_icon(dark, IconKind::ActionDelete), 14.0));
-                                                            let delete_response = ui.add_sized(
-                                                                [ui.available_width(), 0.0],
-                                                                Button::new(
-                                                                    RichText::new("Permanent Delete")
-                                                                        .color(Color32::from_rgb(229, 57, 53)),
-                                                                )
-                                                                .frame(false),
-                                                            );
-                                                            if delete_response.clicked() {
-                                                                if let Err(err) = self.permanent_delete_project(&project.name) {
-                                                                    self.project_action_error = Some(err);
-                                                                }
-                                                                ui.close();
+                                                            ui.close();
+                                                        }
+                                                        block_rects.push(restore_response.rect);
+
+                                                        let delete_response = ui.add_sized(
+                                                            [menu_width, 0.0],
+                                                            Button::image_and_text(
+                                                                icon_image(
+                                                                    themed_icon(dark, IconKind::ActionDelete),
+                                                                    icon_size,
+                                                                ),
+                                                                RichText::new("Permanent Delete")
+                                                                    .color(Color32::from_rgb(229, 57, 53)),
+                                                            )
+                                                            .frame(true),
+                                                        );
+                                                        if delete_response.clicked() {
+                                                            if let Err(err) = self.permanent_delete_project(&project.name) {
+                                                                self.project_action_error = Some(err);
                                                             }
-                                                            block_rects.push(delete_response.rect);
-                                                        });
+                                                            ui.close();
+                                                        }
+                                                        block_rects.push(delete_response.rect);
                                                     }
 
                                                 });

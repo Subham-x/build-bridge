@@ -84,8 +84,8 @@ impl ProjectDashboardApp {
                     }
 
                     response.context_menu(|ui| {
-                        ui.label("Copy and Open (Ctrl + Click)");
-                        if ui.button("Copy").clicked() {
+                        // ui.label("Actions");
+                        if ui.button("Copy (Ctrl + Click)").clicked() {
                             ui.ctx().copy_text(token.to_owned());
                             ui.close();
                         }
