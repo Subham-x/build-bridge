@@ -416,6 +416,19 @@ impl ProjectDashboardApp {
             None => return,
         };
 
+        let overlay_rect = ctx.viewport_rect();
+        egui::Area::new("project_action_confirm_overlay".into())
+            .order(egui::Order::Middle)
+            .fixed_pos(overlay_rect.left_top())
+            .show(ctx, |ui| {
+                let (rect, _) = ui.allocate_exact_size(overlay_rect.size(), egui::Sense::click());
+                ui.painter().rect_filled(
+                    rect,
+                    0.0,
+                    Color32::from_rgba_premultiplied(0, 0, 0, 140),
+                );
+            });
+
         let danger_text = Color32::from_rgb(255, 0, 79);
         let (title, message, confirm_label) = match &action {
             ProjectConfirmAction::MoveToBin { project_name } => (
@@ -436,6 +449,7 @@ impl ProjectDashboardApp {
         let mut confirm = false;
         let mut close_confirm = false;
         egui::Window::new(title)
+            .order(egui::Order::Foreground)
             .collapsible(false)
             .resizable(false)
             .open(&mut open)

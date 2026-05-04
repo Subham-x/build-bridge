@@ -576,6 +576,7 @@ impl ProjectDashboardApp {
                                         && self.nav != super::Nav::Bin
                                         && !menu_action_clicked
                                         && !any_menu_open
+                                        && self.pending_project_action.is_none()
                                     {
                                         self.open_project_details(&project.name);
                                     }
