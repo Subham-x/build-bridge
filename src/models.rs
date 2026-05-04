@@ -65,6 +65,8 @@ pub struct BuildEntry {
     pub path: String,
     #[serde(default)]
     pub created_on: Option<String>,
+    #[serde(default)]
+    pub starred: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

@@ -773,8 +773,9 @@ impl ProjectDashboardApp {
 
                     let mut builds = project.builds.clone();
                     builds.sort_by(|a, b| {
-                        b.created_on
-                            .cmp(&a.created_on)
+                        b.starred
+                            .cmp(&a.starred)
+                            .then_with(|| b.created_on.cmp(&a.created_on))
                             .then_with(|| a.name.cmp(&b.name))
                     });
 
@@ -804,7 +805,19 @@ impl ProjectDashboardApp {
                             ),
                             Vec2::splat(star_size),
                         );
-                        ui.put(star_rect, icon_image(themed_icon(dark, IconKind::Star), star_size));
+                        let star_icon = if build.starred {
+                            IconKind::StarFilled
+                        } else {
+                            IconKind::Star
+                        };
+                        let star_response = ui.put(
+                            star_rect,
+                            icon_button(themed_icon(dark, star_icon), star_size).frame(false),
+                        );
+                        let star_clicked = star_response.clicked();
+                        if star_clicked {
+                            self.toggle_build_star(&project.name, &build.path);
+                        }
 
                         let name_pos = egui::pos2(star_rect.right() + icon_gap, text_rect.center().y);
                         ui.painter().text(
@@ -822,7 +835,7 @@ impl ProjectDashboardApp {
                             ui.style().visuals.weak_text_color(),
                         );
 
-                        if response.clicked() {
+                        if response.clicked() && !star_clicked {
                             self.selected_build_index = Some(index);
                             self.build_location_popup_path = Some(build.path.clone());
                             self.build_location_popup_open = true;

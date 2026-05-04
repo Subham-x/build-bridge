@@ -753,6 +753,17 @@ impl ProjectDashboardApp {
             }
         };
 
+        let starred_path = existing_builds
+            .iter()
+            .find(|build| build.starred)
+            .map(|build| build.path.clone());
+        let mut builds = builds;
+        if let Some(path) = starred_path {
+            if let Some(build) = builds.iter_mut().find(|build| build.path == path) {
+                build.starred = true;
+            }
+        }
+
         if existing_builds != builds {
             if let Some(project) = self
                 .projects
@@ -797,6 +808,7 @@ impl ProjectDashboardApp {
                 name,
                 path: path.display().to_string(),
                 created_on,
+                starred: false,
             });
         }
 
@@ -850,6 +862,42 @@ impl ProjectDashboardApp {
         }
 
         Ok(())
+    }
+
+    fn toggle_build_star(&mut self, project_name: &str, build_path: &str) {
+        let project = match self
+            .projects
+            .iter_mut()
+            .find(|project| project.name == project_name)
+        {
+            Some(project) => project,
+            None => return,
+        };
+
+        let was_starred = project
+            .builds
+            .iter()
+            .find(|build| build.path == build_path)
+            .map(|build| build.starred)
+            .unwrap_or(false);
+
+        for build in &mut project.builds {
+            build.starred = false;
+        }
+
+        if !was_starred {
+            if let Some(build) = project
+                .builds
+                .iter_mut()
+                .find(|build| build.path == build_path)
+            {
+                build.starred = true;
+            }
+        }
+
+        if let Err(err) = self.persist_projects() {
+            self.project_action_error = Some(err);
+        }
     }
 
     fn filtered_projects(&self) -> Vec<ProjectRecord> {

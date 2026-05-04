@@ -25,6 +25,7 @@ pub enum IconKind {
     ActionDelete,
     Bug,
     Star,
+    StarFilled,
 }
 
 pub fn themed_icon(dark: bool, icon: IconKind) -> ImageSource<'static> {
@@ -94,6 +95,7 @@ pub fn themed_icon(dark: bool, icon: IconKind) -> ImageSource<'static> {
         }
         (true, IconKind::Star) => egui::include_image!("../assets/icons/star_dark.svg"),
         (false, IconKind::Star) => egui::include_image!("../assets/icons/star_light.svg"),
+        (_, IconKind::StarFilled) => egui::include_image!("../assets/icons/star-fill.svg"),
     }
 }
 
