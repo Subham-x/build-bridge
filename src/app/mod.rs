@@ -4,7 +4,7 @@ mod sidebar;
 mod terminal;
 mod theme_popup;
 
-use crate::config::{init_app_config, AppConfig};
+use crate::config::{init_app_config, init_preferences, AppConfig};
 
 use crate::icons::{icon_image, themed_icon, IconKind};
 use crate::models::{CreateProjectForm, ProjectRecord, ProjectType};
@@ -111,7 +111,16 @@ pub struct ProjectDashboardApp {
 impl Default for ProjectDashboardApp {
     fn default() -> Self {
         let (projects_file_path, projects, storage_error) = init_storage();
-        let (app_config_file_path, app_config, app_config_error) = init_app_config();
+        let (app_config_file_path, app_config, mut app_config_error) = init_app_config();
+
+        if let Err(err) = init_preferences() {
+            let combined = match app_config_error {
+                Some(existing) => format!("{existing}\n{err}"),
+                None => err,
+            };
+            app_config_error = Some(combined);
+        }
+
         Self {
             zoom_applied: false,
             mica_attempted: false,

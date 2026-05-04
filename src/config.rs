@@ -61,3 +61,38 @@ pub fn save_app_config(path: &Path, config: &AppConfig) -> Result<(), String> {
         .map_err(|err| format!("Failed to serialize app config to JSON: {err}"))?;
     fs::write(path, json).map_err(|err| format!("Failed to write '{}': {err}", path.display()))
 }
+
+pub fn init_preferences() -> Result<(), String> {
+    let project_dirs = ProjectDirs::from("com", "BuildBridge", "BuildBridge")
+        .ok_or_else(|| "Failed to locate a writable config folder for this OS.".to_owned())?;
+    let config_dir = project_dirs.config_dir();
+    fs::create_dir_all(config_dir).map_err(|err| {
+        format!(
+            "Failed to create config folder '{}': {err}",
+            config_dir.display()
+        )
+    })?;
+
+    let preferences_path = config_dir.join("preferences.json");
+    if !preferences_path.exists() {
+        let content = r#"{
+  "settings": {
+    "theme": "system",
+    "fontSize": "medium"
+  },
+  "config": {
+    "sidePane": {
+      "width": null,
+      "collapsed": false
+    }
+  }
+}"#;
+        fs::write(&preferences_path, content).map_err(|err| {
+            format!(
+                "Failed to create preferences.json at '{}': {err}",
+                preferences_path.display()
+            )
+        })?;
+    }
+    Ok(())
+}
