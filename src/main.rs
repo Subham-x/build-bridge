@@ -1,5 +1,6 @@
 mod app;
 mod app_window;
+mod config;
 mod icons;
 mod models;
 mod storage;

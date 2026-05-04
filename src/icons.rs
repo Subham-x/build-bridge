@@ -23,10 +23,13 @@ pub enum IconKind {
     ActionEdit,
     ActionArchive,
     ActionDelete,
+    Bug,
 }
 
 pub fn themed_icon(dark: bool, icon: IconKind) -> ImageSource<'static> {
     match (dark, icon) {
+        (true, IconKind::Bug) => egui::include_image!("../assets/icons/bug_dark.svg"),
+        (false, IconKind::Bug) => egui::include_image!("../assets/icons/bug_light.svg"),
         (true, IconKind::Back) => egui::include_image!("../assets/icons/caret_left_dark.svg"),
         (false, IconKind::Back) => egui::include_image!("../assets/icons/caret_left_light.svg"),
         (true, IconKind::Briefcase) => egui::include_image!("../assets/icons/briefcase_dark.svg"),

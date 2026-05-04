@@ -4,6 +4,8 @@ mod sidebar;
 mod terminal;
 mod theme_popup;
 
+use crate::config::{init_app_config, AppConfig};
+
 use crate::icons::{icon_image, themed_icon, IconKind};
 use crate::models::{CreateProjectForm, ProjectRecord, ProjectType};
 use crate::storage::{current_date, init_storage, save_projects};
@@ -12,6 +14,7 @@ use eframe::egui::{
 };
 use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Nav {
@@ -21,6 +24,7 @@ enum Nav {
     About,
     Feedback,
     PrivacyPolicy,
+    Debug,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -99,11 +103,15 @@ pub struct ProjectDashboardApp {
     bridge_status_expanded: bool,
     terminal_link_popup_open: bool,
     terminal_link_target: Option<String>,
+    app_config: AppConfig,
+    app_config_file_path: Option<PathBuf>,
+    app_config_error: Option<String>,
 }
 
 impl Default for ProjectDashboardApp {
     fn default() -> Self {
         let (projects_file_path, projects, storage_error) = init_storage();
+        let (app_config_file_path, app_config, app_config_error) = init_app_config();
         Self {
             zoom_applied: false,
             mica_attempted: false,
@@ -138,6 +146,9 @@ impl Default for ProjectDashboardApp {
             bridge_status_expanded: false,
             terminal_link_popup_open: false,
             terminal_link_target: None,
+            app_config,
+            app_config_file_path,
+            app_config_error,
         }
     }
 }
@@ -160,7 +171,7 @@ impl eframe::App for ProjectDashboardApp {
             apply_native_mica(frame, &mut self.mica_error);
         }
 
-        if !matches!(self.nav, Nav::Home | Nav::Archived | Nav::Bin)
+        if !matches!(self.nav, Nav::Home | Nav::Archived | Nav::Bin | Nav::Debug)
             && self.selected_project_name.is_some()
         {
             self.close_project_details();
@@ -174,11 +185,30 @@ impl eframe::App for ProjectDashboardApp {
         self.render_sidebar(ctx, dark);
         self.render_status_bar(ctx, dark);
         self.render_bridge_panel(ctx, dark);
-        self.render_project_page(ctx, dark);
+
+        // Main content area
+        egui::CentralPanel::default().show(ctx, |ui| {
+            match self.nav {
+                Nav::Home | Nav::Archived | Nav::Bin => {
+                    self.render_project_page(ctx, dark);
+                }
+                Nav::Debug => {
+                    self.render_debug_page(ui, dark);
+                }
+                _ => {
+                    self.render_support_page(ui, dark);
+                }
+            }
+        });
+
         self.render_theme_popup(ctx);
         self.render_create_modal(ctx);
         self.render_empty_bin_confirm(ctx);
         self.render_project_action_confirm(ctx);
+
+        if let Some(err) = self.app_config_error.clone() {
+            self.render_error_toast(ctx, &err);
+        }
     }
 }
 
@@ -595,7 +625,7 @@ impl ProjectDashboardApp {
                     Nav::Home => project.status == "active",
                     Nav::Archived => project.status == "archived",
                     Nav::Bin => project.status == "deleted",
-                    Nav::About | Nav::Feedback | Nav::PrivacyPolicy => false,
+                    Nav::About | Nav::Feedback | Nav::PrivacyPolicy | Nav::Debug => false,
                 };
                 let framework = map_framework_label(&project.project_type).to_lowercase();
                 let search_match = query.is_empty()
@@ -760,22 +790,97 @@ impl ProjectDashboardApp {
         Ok(())
     }
 
-    fn persist_projects(&self) -> Result<(), String> {
+        fn persist_projects(&self) -> Result<(), String> {
         let path = self
             .projects_file_path
             .as_ref()
             .ok_or_else(|| "Cannot determine config directory for Projects.json".to_owned())?;
         save_projects(path, &self.projects)
+        }
+
+    fn render_debug_page(&mut self, ui: &mut egui::Ui, _dark: bool) {
+        ui.heading("Debug Page");
+        ui.add_space(16.0);
+        if ui.button("Open Config Folder").clicked() {
+            if let Err(err) = self.open_config_folder() {
+                self.app_config_error = Some(err);
+            }
+        }
+
+        if let Some(config_path) = &self.app_config_file_path {
+            ui.add_space(8.0);
+            ui.label(format!("Config file: {}", config_path.display()));
+        }
+        }
+
+    fn open_config_folder(&self) -> Result<(), String> {
+        if let Some(path) = &self.app_config_file_path {
+            let config_dir = path
+                .parent()
+                .ok_or_else(|| "Could not get config directory path.".to_owned())?;
+
+            #[cfg(target_os = "windows")]
+            Command::new("explorer")
+                .arg(config_dir)
+                .spawn()
+                .map_err(|err| format!("Failed to open config folder: {err}"))?;
+
+            #[cfg(target_os = "macos")]
+            Command::new("open")
+                .arg(config_dir)
+                .spawn()
+                .map_err(|err| format!("Failed to open config folder: {err}"))?;
+
+            #[cfg(target_os = "linux")]
+            Command::new("xdg-open")
+                .arg(config_dir)
+                .spawn()
+                .map_err(|err| format!("Failed to open config folder: {err}"))?;
+
+            Ok(())
+        } else {
+            Err("App config file path not set.".to_owned())
+        }
+    }
+
+    fn render_error_toast(&mut self, ctx: &egui::Context, error_message: &str) {
+        egui::Window::new("Error")
+            .collapsible(false)
+            .resizable(false)
+            .title_bar(true)
+            .anchor(egui::Align2::RIGHT_TOP, [-10.0, 10.0])
+            .show(ctx, |ui| {
+                ui.set_max_width(300.0);
+                ui.add(
+                    egui::Label::new(egui::RichText::new(error_message).color(Color32::LIGHT_RED))
+                        .wrap(),
+                );
+                if ui.button("Dismiss").clicked() {
+                    self.app_config_error = None;
+                }
+            });
+    }
+
+    fn render_support_page(&mut self, ui: &mut egui::Ui, _dark: bool) {
+        let body = match self.nav {
+            Nav::About => support_page_body(SupportPage::About),
+            Nav::Feedback => support_page_body(SupportPage::Feedback),
+            Nav::PrivacyPolicy => support_page_body(SupportPage::PrivacyPolicy),
+            _ => "",
+        };
+        ui.heading(body);
     }
 }
 
-fn framework_card(ui: &mut egui::Ui, selected: bool, icon: &str, label: &str) -> egui::Response {
-    let card_size = Vec2::new(120.0, 120.0);
-    let stroke = if selected {
-        egui::Stroke::new(2.0, Color32::from_rgb(2, 110, 193))
-    } else {
-        egui::Stroke::new(1.0, Color32::from_gray(95))
-    };
+                    fn framework_card(ui: &mut egui::Ui, selected: bool, icon: &str, label: &str) -> egui::Response {
+                    let card_size = Vec2::new(120.0, 120.0);
+                    let stroke = if selected {
+                    egui::Stroke::new(2.0, Color32::from_rgb(2, 110, 193))
+                    } else {
+                    egui::Stroke::new(1.0, Color32::from_gray(95))
+                    };
+
+
 
     let content = format!("{}\n\n{}", icon, label);
     let response = ui.add_sized(

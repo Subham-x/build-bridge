@@ -82,7 +82,7 @@ impl ProjectDashboardApp {
                                         self.create_modal_open = true;
                                     }
                                 }
-                                super::Nav::About | super::Nav::Feedback | super::Nav::PrivacyPolicy => {}
+                                super::Nav::About | super::Nav::Feedback | super::Nav::PrivacyPolicy | super::Nav::Debug => {}
                             }
                         }
                     });
@@ -237,7 +237,7 @@ impl ProjectDashboardApp {
                                     super::Nav::Home => (IconKind::Briefcase, "No Projects"),
                                     super::Nav::Archived => (IconKind::Archive, "No Archived Projects"),
                                     super::Nav::Bin => (IconKind::Trash, "No Projects in Bin"),
-                                    super::Nav::About | super::Nav::Feedback | super::Nav::PrivacyPolicy => {
+                                    super::Nav::About | super::Nav::Feedback | super::Nav::PrivacyPolicy | super::Nav::Debug => {
                                         (IconKind::Briefcase, "No Projects")
                                     }
                                 };
@@ -595,7 +595,11 @@ impl ProjectDashboardApp {
                     super::Nav::PrivacyPolicy => {
                         ui.label(support_page_body(super::SupportPage::PrivacyPolicy));
                     }
+                    super::Nav::Debug => {
+                        ui.label("Debug Page - use sidebar to access debug features");
+                    }
                 }
+
 
                 if let Some(action_error) = &self.project_action_error {
                     ui.colored_label(Color32::LIGHT_RED, action_error);
