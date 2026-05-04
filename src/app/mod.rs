@@ -17,6 +17,9 @@ use std::collections::{BTreeSet, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::{Duration, Instant};
+
+const REALTIME_SCAN_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Nav {
@@ -103,10 +106,12 @@ pub struct ProjectDashboardApp {
     selected_build_index: Option<usize>,
     selected_artifact_type: String,
     bridge_status_expanded: bool,
+    real_time_enabled: bool,
     terminal_link_popup_open: bool,
     terminal_link_target: Option<String>,
     build_location_popup_open: bool,
     build_location_popup_path: Option<String>,
+    last_realtime_scan: Option<Instant>,
     app_config: AppConfig,
     app_config_file_path: Option<PathBuf>,
     app_config_error: Option<String>,
@@ -136,6 +141,8 @@ impl Default for ProjectDashboardApp {
 
         let sidebar_width = preferences.config.side_pane.width.unwrap_or(260.0);
         let sidebar_visible = !preferences.config.side_pane.collapsed;
+        let bridge_status_expanded = !preferences.project_settings.build_status_collapse;
+        let real_time_enabled = preferences.project_settings.real_time;
 
         Self {
             zoom_applied: false,
@@ -168,11 +175,13 @@ impl Default for ProjectDashboardApp {
             selected_project_name: None,
             selected_build_index: None,
             selected_artifact_type: "Type".to_owned(),
-            bridge_status_expanded: false,
+            bridge_status_expanded,
+            real_time_enabled,
             terminal_link_popup_open: false,
             terminal_link_target: None,
             build_location_popup_open: false,
             build_location_popup_path: None,
+            last_realtime_scan: None,
             app_config,
             app_config_file_path,
             app_config_error,
@@ -208,6 +217,8 @@ impl eframe::App for ProjectDashboardApp {
         if self.selected_project_name.is_some() && self.selected_project().is_none() {
             self.close_project_details();
         }
+
+        self.maybe_refresh_realtime_builds();
 
         let dark = ctx.style().visuals.dark_mode;
 
@@ -260,6 +271,14 @@ impl eframe::App for ProjectDashboardApp {
             self.preferences.config.side_pane.collapsed = !self.sidebar_visible;
             changed = true;
         }
+        if self.preferences.project_settings.build_status_collapse != !self.bridge_status_expanded {
+            self.preferences.project_settings.build_status_collapse = !self.bridge_status_expanded;
+            changed = true;
+        }
+        if self.preferences.project_settings.real_time != self.real_time_enabled {
+            self.preferences.project_settings.real_time = self.real_time_enabled;
+            changed = true;
+        }
 
         if changed {
             if let Err(err) = self.persist_preferences() {
@@ -308,6 +327,27 @@ impl ProjectDashboardApp {
                 }
             });
         }
+    }
+
+    fn maybe_refresh_realtime_builds(&mut self) {
+        if !self.real_time_enabled {
+            return;
+        }
+
+        let project_name = match self.selected_project_name.clone() {
+            Some(name) => name,
+            None => return,
+        };
+
+        let now = Instant::now();
+        if let Some(last) = self.last_realtime_scan {
+            if now.duration_since(last) < REALTIME_SCAN_INTERVAL {
+                return;
+            }
+        }
+
+        self.last_realtime_scan = Some(now);
+        self.refresh_android_builds(&project_name);
     }
 
     fn render_create_modal(&mut self, ctx: &egui::Context) {

@@ -732,6 +732,12 @@ impl ProjectDashboardApp {
                                 }
                             });
 
+                            ui.add_space(4.0);
+                            ui.horizontal(|ui| {
+                                ui.label("Real-Time");
+                                toggle_switch(ui, &mut self.real_time_enabled);
+                            });
+
                             ui.horizontal(|ui| {
                                 let _ = ui.add(
                                     icon_button(themed_icon(dark, IconKind::Broadcast), 14.0)
@@ -845,4 +851,33 @@ impl ProjectDashboardApp {
                 });
         });
     }
+}
+
+fn toggle_switch(ui: &mut egui::Ui, value: &mut bool) -> egui::Response {
+    let size = Vec2::new(38.0, 20.0);
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+    if response.clicked() {
+        *value = !*value;
+    }
+
+    let visuals = ui.style().visuals.clone();
+    let on_color = Color32::from_rgb(36, 136, 230);
+    let off_color = visuals.widgets.inactive.bg_fill;
+    let bg_color = if *value { on_color } else { off_color };
+    ui.painter()
+        .rect_filled(rect, rect.height() * 0.5, bg_color);
+
+    let knob_radius = rect.height() * 0.5 - 2.0;
+    let knob_x = if *value {
+        rect.right() - knob_radius - 2.0
+    } else {
+        rect.left() + knob_radius + 2.0
+    };
+    ui.painter().circle_filled(
+        egui::pos2(knob_x, rect.center().y),
+        knob_radius,
+        Color32::WHITE,
+    );
+
+    response
 }

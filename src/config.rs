@@ -16,6 +16,8 @@ pub struct AppConfig {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Preferences {
     pub settings: Settings,
+    #[serde(rename = "project-settings", default)]
+    pub project_settings: ProjectSettings,
     pub config: Config,
 }
 
@@ -24,6 +26,14 @@ pub struct Settings {
     pub theme: String,
     #[serde(rename = "fontSize")]
     pub font_size: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct ProjectSettings {
+    #[serde(rename = "build-status-collapse", default)]
+    pub build_status_collapse: bool,
+    #[serde(rename = "real-time", default)]
+    pub real_time: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -44,6 +54,10 @@ impl Default for Preferences {
             settings: Settings {
                 theme: "system".to_owned(),
                 font_size: "medium".to_owned(),
+            },
+            project_settings: ProjectSettings {
+                build_status_collapse: false,
+                real_time: true,
             },
             config: Config {
                 side_pane: SidePane {
