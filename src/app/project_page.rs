@@ -252,9 +252,11 @@ impl ProjectDashboardApp {
                                     },
                                 );
                             } else {
+                                let mut any_menu_open = false;
                                 ScrollArea::vertical().max_height(list_height).show(ui, |ui| {
                                     for project in projects {
                                         let mut block_rects = Vec::new();
+                                        let mut menu_action_clicked = false;
                                         let card_response = ui
                                             .group(|ui| {
                                         ui.horizontal(|ui| {
@@ -393,6 +395,7 @@ impl ProjectDashboardApp {
                                                         None,
                                                     );
                                                     if edit_response.clicked() {
+                                                        menu_action_clicked = true;
                                                         self.begin_edit_project(&project.name);
                                                         ui.close();
                                                     }
@@ -406,6 +409,7 @@ impl ProjectDashboardApp {
                                                             None,
                                                         );
                                                         if archive_response.clicked() {
+                                                            menu_action_clicked = true;
                                                             if let Err(err) = self.archive_project(&project.name) {
                                                                 self.project_action_error = Some(err);
                                                             }
@@ -421,6 +425,7 @@ impl ProjectDashboardApp {
                                                             None,
                                                         );
                                                         if unarchive_response.clicked() {
+                                                            menu_action_clicked = true;
                                                             if let Err(err) = self.unarchive_project(&project.name) {
                                                                 self.project_action_error = Some(err);
                                                             }
@@ -430,7 +435,8 @@ impl ProjectDashboardApp {
                                                     }
 
                                                     if self.nav != super::Nav::Bin {
-                                                        let bin_label = RichText::new("Bin").color(danger_text);
+                                                        let bin_label =
+                                                            RichText::new("Move to Bin").color(danger_text);
                                                         let bin_response = menu_row(
                                                             ui,
                                                             IconKind::Trash,
@@ -439,9 +445,12 @@ impl ProjectDashboardApp {
                                                             Some(danger_bg),
                                                         );
                                                         if bin_response.clicked() {
-                                                            if let Err(err) = self.bin_project(&project.name) {
-                                                                self.project_action_error = Some(err);
-                                                            }
+                                                            menu_action_clicked = true;
+                                                            self.pending_project_action = Some(
+                                                                super::ProjectConfirmAction::MoveToBin {
+                                                                    project_name: project.name.clone(),
+                                                                },
+                                                            );
                                                             ui.close();
                                                         }
                                                         block_rects.push(bin_response.rect);
@@ -456,6 +465,7 @@ impl ProjectDashboardApp {
                                                             None,
                                                         );
                                                         if restore_response.clicked() {
+                                                            menu_action_clicked = true;
                                                             if let Err(err) = self.restore_project(&project.name) {
                                                                 self.project_action_error = Some(err);
                                                             }
@@ -471,15 +481,21 @@ impl ProjectDashboardApp {
                                                             Some(danger_bg),
                                                         );
                                                         if delete_response.clicked() {
-                                                            if let Err(err) = self.permanent_delete_project(&project.name) {
-                                                                self.project_action_error = Some(err);
-                                                            }
+                                                            menu_action_clicked = true;
+                                                            self.pending_project_action = Some(
+                                                                super::ProjectConfirmAction::PermanentDelete {
+                                                                    project_name: project.name.clone(),
+                                                                },
+                                                            );
                                                             ui.close();
                                                         }
                                                         block_rects.push(delete_response.rect);
                                                     }
 
                                                 });
+                                                if menu_response.inner.is_some() {
+                                                    any_menu_open = true;
+                                                }
                                                 ui.ctx().set_style(ctx_style_backup);
                                                 block_rects.push(menu_response.response.rect);
                                                 let serve_settings_response = ui
@@ -558,6 +574,8 @@ impl ProjectDashboardApp {
                                     if clicked_background
                                         && !pointer_over_control
                                         && self.nav != super::Nav::Bin
+                                        && !menu_action_clicked
+                                        && !any_menu_open
                                     {
                                         self.open_project_details(&project.name);
                                     }

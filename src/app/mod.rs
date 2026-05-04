@@ -36,6 +36,12 @@ enum AppThemeMode {
     Light,
 }
 
+#[derive(Clone, PartialEq, Eq)]
+enum ProjectConfirmAction {
+    MoveToBin { project_name: String },
+    PermanentDelete { project_name: String },
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SupportPage {
     About,
@@ -86,6 +92,7 @@ pub struct ProjectDashboardApp {
     bin_select_mode: bool,
     bin_selected: HashSet<String>,
     empty_bin_confirm_open: bool,
+    pending_project_action: Option<ProjectConfirmAction>,
     selected_project_name: Option<String>,
     selected_build_index: Option<usize>,
     selected_artifact_type: String,
@@ -124,6 +131,7 @@ impl Default for ProjectDashboardApp {
             bin_select_mode: false,
             bin_selected: HashSet::new(),
             empty_bin_confirm_open: false,
+            pending_project_action: None,
             selected_project_name: None,
             selected_build_index: None,
             selected_artifact_type: "Type".to_owned(),
@@ -170,6 +178,7 @@ impl eframe::App for ProjectDashboardApp {
         self.render_theme_popup(ctx);
         self.render_create_modal(ctx);
         self.render_empty_bin_confirm(ctx);
+        self.render_project_action_confirm(ctx);
     }
 }
 
@@ -399,6 +408,69 @@ impl ProjectDashboardApp {
         }
 
         self.empty_bin_confirm_open = open;
+    }
+
+    fn render_project_action_confirm(&mut self, ctx: &egui::Context) {
+        let action = match self.pending_project_action.clone() {
+            Some(action) => action,
+            None => return,
+        };
+
+        let danger_text = Color32::from_rgb(255, 0, 79);
+        let (title, message, confirm_label) = match &action {
+            ProjectConfirmAction::MoveToBin { project_name } => (
+                "Move to Bin",
+                format!("Move '{project_name}' to Bin? You can restore it later."),
+                "Move to Bin",
+            ),
+            ProjectConfirmAction::PermanentDelete { project_name } => (
+                "Permanent Delete",
+                format!(
+                    "This will permanently delete '{project_name}'. This action cannot be undone."
+                ),
+                "Permanent Delete",
+            ),
+        };
+
+        let mut open = true;
+        let mut confirm = false;
+        let mut close_confirm = false;
+        egui::Window::new(title)
+            .collapsible(false)
+            .resizable(false)
+            .open(&mut open)
+            .default_size(Vec2::new(420.0, 130.0))
+            .show(ctx, |ui| {
+                ui.label(message);
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui
+                        .add(Button::new(RichText::new(confirm_label).color(danger_text)))
+                        .clicked()
+                    {
+                        confirm = true;
+                    }
+                    if ui.add(brand_button("Cancel")).clicked() {
+                        close_confirm = true;
+                    }
+                });
+            });
+
+        if confirm {
+            let result = match action {
+                ProjectConfirmAction::MoveToBin { project_name } => self.bin_project(&project_name),
+                ProjectConfirmAction::PermanentDelete { project_name } => {
+                    self.permanent_delete_project(&project_name)
+                }
+            };
+            if let Err(err) = result {
+                self.project_action_error = Some(err);
+            }
+        }
+
+        if confirm || close_confirm || !open {
+            self.pending_project_action = None;
+        }
     }
 
     fn create_project(&mut self) -> Result<String, String> {
