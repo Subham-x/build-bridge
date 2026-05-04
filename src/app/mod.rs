@@ -4,7 +4,7 @@ mod sidebar;
 mod terminal;
 mod theme_popup;
 
-use crate::config::{init_app_config, init_preferences, AppConfig};
+use crate::config::{init_app_config, init_preferences, save_preferences, AppConfig, Preferences};
 
 use crate::icons::{icon_image, themed_icon, IconKind};
 use crate::models::{CreateProjectForm, ProjectRecord, ProjectType};
@@ -106,14 +106,17 @@ pub struct ProjectDashboardApp {
     app_config: AppConfig,
     app_config_file_path: Option<PathBuf>,
     app_config_error: Option<String>,
+    preferences: Preferences,
+    preferences_file_path: Option<PathBuf>,
 }
 
 impl Default for ProjectDashboardApp {
     fn default() -> Self {
         let (projects_file_path, projects, storage_error) = init_storage();
         let (app_config_file_path, app_config, mut app_config_error) = init_app_config();
+        let (preferences_file_path, preferences, pref_error) = init_preferences();
 
-        if let Err(err) = init_preferences() {
+        if let Some(err) = pref_error {
             let combined = match app_config_error {
                 Some(existing) => format!("{existing}\n{err}"),
                 None => err,
@@ -121,14 +124,23 @@ impl Default for ProjectDashboardApp {
             app_config_error = Some(combined);
         }
 
+        let theme_mode = match preferences.settings.theme.to_lowercase().as_str() {
+            "dark" => AppThemeMode::Dark,
+            "light" => AppThemeMode::Light,
+            _ => AppThemeMode::System,
+        };
+
+        let sidebar_width = preferences.config.side_pane.width.unwrap_or(260.0);
+        let sidebar_visible = !preferences.config.side_pane.collapsed;
+
         Self {
             zoom_applied: false,
             mica_attempted: false,
             mica_error: None,
             nav: Nav::Home,
-            sidebar_visible: true,
-            sidebar_width: 260.0,
-            sidebar_animated_width: 260.0,
+            sidebar_visible,
+            sidebar_width,
+            sidebar_animated_width: sidebar_width,
             create_modal_open: false,
             create_modal_step: CreateModalStep::Framework,
             selected_framework: ProjectType::Android,
@@ -140,7 +152,7 @@ impl Default for ProjectDashboardApp {
             status_message: None,
             storage_error,
             theme_popup_open: false,
-            theme_mode: AppThemeMode::System,
+            theme_mode,
             project_action_error: None,
             modal_mode: ModalMode::Create,
             archive_select_mode: false,
@@ -158,6 +170,8 @@ impl Default for ProjectDashboardApp {
             app_config,
             app_config_file_path,
             app_config_error,
+            preferences,
+            preferences_file_path,
         }
     }
 }
@@ -217,6 +231,33 @@ impl eframe::App for ProjectDashboardApp {
 
         if let Some(err) = self.app_config_error.clone() {
             self.render_error_toast(ctx, &err);
+        }
+
+        // Sync and persist preferences
+        let theme_str = match self.theme_mode {
+            AppThemeMode::System => "system",
+            AppThemeMode::Dark => "dark",
+            AppThemeMode::Light => "light",
+        };
+
+        let mut changed = false;
+        if self.preferences.settings.theme != theme_str {
+            self.preferences.settings.theme = theme_str.to_owned();
+            changed = true;
+        }
+        if self.preferences.config.side_pane.width != Some(self.sidebar_width) {
+            self.preferences.config.side_pane.width = Some(self.sidebar_width);
+            changed = true;
+        }
+        if self.preferences.config.side_pane.collapsed != !self.sidebar_visible {
+            self.preferences.config.side_pane.collapsed = !self.sidebar_visible;
+            changed = true;
+        }
+
+        if changed {
+            if let Err(err) = self.persist_preferences() {
+                self.app_config_error = Some(err);
+            }
         }
     }
 }
@@ -806,6 +847,14 @@ impl ProjectDashboardApp {
             .ok_or_else(|| "Cannot determine config directory for Projects.json".to_owned())?;
         save_projects(path, &self.projects)
         }
+
+    fn persist_preferences(&self) -> Result<(), String> {
+        let path = self
+            .preferences_file_path
+            .as_ref()
+            .ok_or_else(|| "Cannot determine preferences file path.".to_owned())?;
+        save_preferences(path, &self.preferences)
+    }
 
     fn render_debug_page(&mut self, ui: &mut egui::Ui, _dark: bool) {
         ui.heading("Debug Page");

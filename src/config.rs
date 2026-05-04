@@ -13,6 +13,48 @@ pub struct AppConfig {
     pub debug_page: bool,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Preferences {
+    pub settings: Settings,
+    pub config: Config,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Settings {
+    pub theme: String,
+    #[serde(rename = "fontSize")]
+    pub font_size: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Config {
+    #[serde(rename = "sidePane")]
+    pub side_pane: SidePane,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct SidePane {
+    pub width: Option<f32>,
+    pub collapsed: bool,
+}
+
+impl Default for Preferences {
+    fn default() -> Self {
+        Self {
+            settings: Settings {
+                theme: "system".to_owned(),
+                font_size: "medium".to_owned(),
+            },
+            config: Config {
+                side_pane: SidePane {
+                    width: None,
+                    collapsed: false,
+                },
+            },
+        }
+    }
+}
+
 pub fn init_app_config() -> (Option<PathBuf>, AppConfig, Option<String>) {
     match resolve_app_config_file_path() {
         Ok(path) => match load_or_create_app_config(&path) {
@@ -62,37 +104,53 @@ pub fn save_app_config(path: &Path, config: &AppConfig) -> Result<(), String> {
     fs::write(path, json).map_err(|err| format!("Failed to write '{}': {err}", path.display()))
 }
 
-pub fn init_preferences() -> Result<(), String> {
-    let project_dirs = ProjectDirs::from("com", "BuildBridge", "BuildBridge")
-        .ok_or_else(|| "Failed to locate a writable config folder for this OS.".to_owned())?;
-    let config_dir = project_dirs.config_dir();
-    fs::create_dir_all(config_dir).map_err(|err| {
-        format!(
-            "Failed to create config folder '{}': {err}",
-            config_dir.display()
-        )
-    })?;
+pub fn init_preferences() -> (Option<PathBuf>, Preferences, Option<String>) {
+    let project_dirs = match ProjectDirs::from("com", "BuildBridge", "BuildBridge")
+        .ok_or_else(|| "Failed to locate a writable config folder for this OS.".to_owned())
+    {
+        Ok(dirs) => dirs,
+        Err(err) => return (None, Preferences::default(), Some(err)),
+    };
 
-    let preferences_path = config_dir.join("preferences.json");
-    if !preferences_path.exists() {
-        let content = r#"{
-  "settings": {
-    "theme": "system",
-    "fontSize": "medium"
-  },
-  "config": {
-    "sidePane": {
-      "width": null,
-      "collapsed": false
+    let config_dir = project_dirs.config_dir();
+    if let Err(err) = fs::create_dir_all(config_dir) {
+        return (
+            None,
+            Preferences::default(),
+            Some(format!(
+                "Failed to create config folder '{}': {err}",
+                config_dir.display()
+            )),
+        );
     }
-  }
-}"#;
-        fs::write(&preferences_path, content).map_err(|err| {
-            format!(
-                "Failed to create preferences.json at '{}': {err}",
-                preferences_path.display()
-            )
-        })?;
+
+    let path = config_dir.join("preferences.json");
+    match load_or_create_preferences(&path) {
+        Ok(prefs) => (Some(path), prefs, None),
+        Err(err) => (Some(path), Preferences::default(), Some(err)),
     }
-    Ok(())
+}
+
+pub fn load_or_create_preferences(path: &Path) -> Result<Preferences, String> {
+    if !path.exists() {
+        let default_prefs = Preferences::default();
+        save_preferences(path, &default_prefs)?;
+        return Ok(default_prefs);
+    }
+
+    let raw = fs::read_to_string(path)
+        .map_err(|err| format!("Failed to read '{}': {err}", path.display()))?;
+
+    serde_json::from_str::<Preferences>(&raw).map_err(|err| {
+        format!(
+            "preferences.json is invalid JSON at '{}': {err}",
+            path.display()
+        )
+    })
+}
+
+pub fn save_preferences(path: &Path, prefs: &Preferences) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(prefs)
+        .map_err(|err| format!("Failed to serialize preferences to JSON: {err}"))?;
+    fs::write(path, json).map_err(|err| format!("Failed to write '{}': {err}", path.display()))
 }
