@@ -85,11 +85,11 @@ impl ProjectDashboardApp {
 
                     response.context_menu(|ui| {
                         // ui.label("Actions");
-                        if ui.button("Copy (Ctrl + Click)").clicked() {
+                        if ui.button("Copy").clicked() {
                             ui.ctx().copy_text(token.to_owned());
                             ui.close();
                         }
-                        if ui.button("Open").clicked() {
+                        if ui.button("Open (Ctrl + Click)").clicked() {
                             ui.ctx().open_url(egui::OpenUrl {
                                 url: token.to_owned(),
                                 new_tab: true,

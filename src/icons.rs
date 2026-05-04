@@ -24,6 +24,7 @@ pub enum IconKind {
     ActionArchive,
     ActionDelete,
     Bug,
+    Star,
 }
 
 pub fn themed_icon(dark: bool, icon: IconKind) -> ImageSource<'static> {
@@ -91,6 +92,8 @@ pub fn themed_icon(dark: bool, icon: IconKind) -> ImageSource<'static> {
         (_, IconKind::ActionDelete) => {
             egui::include_image!("../assets/icons/action_delete_red.svg")
         }
+        (true, IconKind::Star) => egui::include_image!("../assets/icons/star_dark.svg"),
+        (false, IconKind::Star) => egui::include_image!("../assets/icons/star_light.svg"),
     }
 }
 

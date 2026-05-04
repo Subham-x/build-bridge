@@ -1,4 +1,4 @@
-use super::{map_framework_label, project_artifact_type_options, support_page_body};
+use super::{format_build_timestamp, map_framework_label, project_artifact_type_options, support_page_body};
 use crate::models::{CreateProjectForm, ProjectRecord, ProjectType};
 use super::ProjectDashboardApp;
 use crate::icons::{icon_button, icon_image, themed_icon, IconKind};
@@ -748,74 +748,86 @@ impl ProjectDashboardApp {
             });
 
             ui.add_space(10.0);
+            let project_type =
+                ProjectType::from_storage(&project.project_type).unwrap_or(ProjectType::Android);
+            if project_type != ProjectType::Android {
+                ui.add_space(6.0);
+                ui.label(
+                    RichText::new("UPCOMING...")
+                        .italics()
+                        .color(ui.style().visuals.weak_text_color()),
+                );
+                return;
+            }
+
+            ui.label(RichText::new(format!("Total Builds ({})", project.builds.len())).strong());
+            ui.add_space(6.0);
+
             ScrollArea::vertical()
                 .max_height((ui.available_height() - 4.0).max(120.0))
                 .show(ui, |ui| {
-                    let project_type =
-                        ProjectType::from_storage(&project.project_type).unwrap_or(ProjectType::Android);
-                    if project_type != ProjectType::Android {
-                        ui.add_space(6.0);
-                        ui.label(
-                            RichText::new("UPCOMING...")
-                                .italics()
-                                .color(ui.style().visuals.weak_text_color()),
-                        );
+                    if project.builds.is_empty() {
+                        ui.label("No builds yet.");
                         return;
                     }
 
-                    if project.builds.is_empty() {
-                        ui.label("No builds yet.");
-                    } else {
-                        for (index, build) in project.builds.iter().enumerate() {
-                            let selected = self.selected_build_index == Some(index);
-                            let row_height = 52.0;
-                            let (rect, response) = ui.allocate_exact_size(
-                                Vec2::new(ui.available_width(), row_height),
-                                Sense::click(),
-                            );
-                            let bg_fill = if selected {
-                                Color32::from_rgb(25, 55, 90)
-                            } else {
-                                ui.style().visuals.panel_fill
-                            };
-                            ui.painter().rect_filled(rect, CornerRadius::same(6), bg_fill);
+                    let mut builds = project.builds.clone();
+                    builds.sort_by(|a, b| {
+                        b.created_on
+                            .cmp(&a.created_on)
+                            .then_with(|| a.name.cmp(&b.name))
+                    });
 
-                            let text_rect = rect.shrink2(Vec2::new(10.0, 6.0));
-                            let created_label =
-                                build.created_on.as_deref().unwrap_or("Unknown time");
-                            ui.painter().text(
-                                text_rect.left_top(),
-                                Align2::LEFT_TOP,
-                                &build.name,
-                                FontId::proportional(18.0),
-                                ui.style().visuals.text_color(),
-                            );
-                            ui.painter().text(
-                                text_rect.right_top(),
-                                Align2::RIGHT_TOP,
-                                created_label,
-                                FontId::proportional(14.0),
-                                ui.style().visuals.weak_text_color(),
-                            );
+                    let star_size = 14.0;
+                    let icon_gap = 6.0;
+                    for (index, build) in builds.iter().enumerate() {
+                        let selected = self.selected_build_index == Some(index);
+                        let row_height = 36.0;
+                        let (rect, response) = ui.allocate_exact_size(
+                            Vec2::new(ui.available_width(), row_height),
+                            Sense::click(),
+                        );
+                        let bg_fill = if selected {
+                            Color32::from_rgb(25, 55, 90)
+                        } else {
+                            ui.style().visuals.panel_fill
+                        };
+                        ui.painter().rect_filled(rect, CornerRadius::same(6), bg_fill);
 
-                            let path_rect = egui::Rect::from_min_max(
-                                egui::pos2(text_rect.left(), text_rect.top() + 22.0),
-                                egui::pos2(text_rect.right(), text_rect.bottom()),
-                            );
-                            ui.scope_builder(egui::UiBuilder::new().max_rect(path_rect), |ui| {
-                                ui.label(
-                                    RichText::new(&build.path)
-                                        .italics()
-                                        .size(12.0)
-                                        .color(ui.style().visuals.weak_text_color()),
-                                );
-                            });
+                        let text_rect = rect.shrink2(Vec2::new(10.0, 6.0));
+                        let created_label =
+                            format_build_timestamp(build.created_on.as_deref());
+                        let star_rect = egui::Rect::from_min_size(
+                            egui::pos2(
+                                text_rect.left(),
+                                text_rect.center().y - star_size * 0.5,
+                            ),
+                            Vec2::splat(star_size),
+                        );
+                        ui.put(star_rect, icon_image(themed_icon(dark, IconKind::Star), star_size));
 
-                            if response.clicked() {
-                                self.selected_build_index = Some(index);
-                            }
-                            ui.add_space(6.0);
+                        let name_pos = egui::pos2(star_rect.right() + icon_gap, text_rect.center().y);
+                        ui.painter().text(
+                            name_pos,
+                            Align2::LEFT_CENTER,
+                            &build.name,
+                            FontId::proportional(18.0),
+                            ui.style().visuals.text_color(),
+                        );
+                        ui.painter().text(
+                            text_rect.right_center(),
+                            Align2::RIGHT_CENTER,
+                            created_label,
+                            FontId::proportional(14.0),
+                            ui.style().visuals.weak_text_color(),
+                        );
+
+                        if response.clicked() {
+                            self.selected_build_index = Some(index);
+                            self.build_location_popup_path = Some(build.path.clone());
+                            self.build_location_popup_open = true;
                         }
+                        ui.add_space(6.0);
                     }
                 });
         });

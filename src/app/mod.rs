@@ -105,6 +105,8 @@ pub struct ProjectDashboardApp {
     bridge_status_expanded: bool,
     terminal_link_popup_open: bool,
     terminal_link_target: Option<String>,
+    build_location_popup_open: bool,
+    build_location_popup_path: Option<String>,
     app_config: AppConfig,
     app_config_file_path: Option<PathBuf>,
     app_config_error: Option<String>,
@@ -169,6 +171,8 @@ impl Default for ProjectDashboardApp {
             bridge_status_expanded: false,
             terminal_link_popup_open: false,
             terminal_link_target: None,
+            build_location_popup_open: false,
+            build_location_popup_path: None,
             app_config,
             app_config_file_path,
             app_config_error,
@@ -230,6 +234,7 @@ impl eframe::App for ProjectDashboardApp {
         self.render_create_modal(ctx);
         self.render_empty_bin_confirm(ctx);
         self.render_project_action_confirm(ctx);
+        self.render_build_location_popup(ctx);
 
         if let Some(err) = self.app_config_error.clone() {
             self.render_error_toast(ctx, &err);
@@ -569,6 +574,60 @@ impl ProjectDashboardApp {
         }
     }
 
+    fn render_build_location_popup(&mut self, ctx: &egui::Context) {
+        if !self.build_location_popup_open {
+            return;
+        }
+
+        let path = match self.build_location_popup_path.clone() {
+            Some(path) => path,
+            None => {
+                self.build_location_popup_open = false;
+                return;
+            }
+        };
+
+        let mut open = self.build_location_popup_open;
+        let mut close_popup = false;
+        let mut open_location = false;
+        egui::Window::new("Build Location")
+            .collapsible(false)
+            .resizable(false)
+            .open(&mut open)
+            .default_size(Vec2::new(520.0, 150.0))
+            .show(ctx, |ui| {
+                ui.label("Location");
+                ui.add_space(6.0);
+                ui.label(
+                    RichText::new(&path)
+                        .italics()
+                        .size(12.0)
+                        .color(ui.style().visuals.weak_text_color()),
+                );
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    if ui.add(brand_button("Open location")).clicked() {
+                        open_location = true;
+                    }
+                    if ui.button("Close").clicked() {
+                        close_popup = true;
+                    }
+                });
+            });
+
+        if open_location {
+            if let Err(err) = self.open_path_location(&path) {
+                self.project_action_error = Some(err);
+            }
+        }
+
+        if close_popup || !open {
+            self.build_location_popup_path = None;
+            open = false;
+        }
+        self.build_location_popup_open = open;
+    }
+
     fn create_project(&mut self) -> Result<String, String> {
         let name = self.create_form.name.trim();
         let main_path = self.create_form.main_path.trim();
@@ -758,6 +817,38 @@ impl ProjectDashboardApp {
                 files.push(path);
             }
         }
+        Ok(())
+    }
+
+    fn open_path_location(&self, path: &str) -> Result<(), String> {
+        let folder = Path::new(path)
+            .parent()
+            .ok_or_else(|| "Could not determine build folder path.".to_owned())?;
+
+        #[cfg(target_os = "windows")]
+        {
+            Command::new("explorer")
+                .arg(folder)
+                .spawn()
+                .map_err(|err| format!("Failed to open folder: {err}"))?;
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            Command::new("open")
+                .arg(folder)
+                .spawn()
+                .map_err(|err| format!("Failed to open folder: {err}"))?;
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            Command::new("xdg-open")
+                .arg(folder)
+                .spawn()
+                .map_err(|err| format!("Failed to open folder: {err}"))?;
+        }
+
         Ok(())
     }
 
@@ -1117,6 +1208,20 @@ fn file_timestamp(path: &Path) -> Option<String> {
     let timestamp = metadata.created().or_else(|_| metadata.modified()).ok()?;
     let datetime: DateTime<Local> = timestamp.into();
     Some(datetime.format("%Y-%m-%d %H:%M").to_string())
+}
+
+fn format_build_timestamp(raw: Option<&str>) -> String {
+    let raw = match raw {
+        Some(raw) => raw,
+        None => return "Unknown time".to_owned(),
+    };
+    match chrono::NaiveDateTime::parse_from_str(raw, "%Y-%m-%d %H:%M") {
+        Ok(datetime) => datetime
+            .format("%d-%m-%Y | %I:%M %p")
+            .to_string()
+            .to_lowercase(),
+        Err(_) => "Unknown time".to_owned(),
+    }
 }
 
 fn is_terminal_link(token: &str) -> bool {
