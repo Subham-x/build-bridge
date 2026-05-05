@@ -630,6 +630,7 @@ impl ProjectDashboardApp {
         let mut open = self.build_location_popup_open;
         let mut close_popup = false;
         let mut open_location = false;
+        let mut copy_path = false;
         egui::Window::new("Build Location")
             .collapsible(false)
             .resizable(false)
@@ -649,6 +650,9 @@ impl ProjectDashboardApp {
                     if ui.add(brand_button("Open location")).clicked() {
                         open_location = true;
                     }
+                    if ui.button("Copy path").clicked() {
+                        copy_path = true;
+                    }
                     if ui.button("Close").clicked() {
                         close_popup = true;
                     }
@@ -659,6 +663,12 @@ impl ProjectDashboardApp {
             if let Err(err) = self.open_path_location(&path) {
                 self.project_action_error = Some(err);
             }
+            close_popup = true;
+        }
+
+        if copy_path {
+            ctx.copy_text(path.clone());
+            close_popup = true;
         }
 
         if close_popup || !open {

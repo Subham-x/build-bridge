@@ -800,6 +800,7 @@ impl ProjectDashboardApp {
                             Vec2::new(ui.available_width(), row_height),
                             Sense::click(),
                         );
+                        let response = response.on_hover_text_at_pointer("Double click to show path");
                         let bg_fill = if selected {
                             Color32::from_rgb(25, 55, 90)
                         } else {
@@ -847,7 +848,11 @@ impl ProjectDashboardApp {
                             ui.style().visuals.weak_text_color(),
                         );
 
+                        let star_hovered = star_response.hovered();
                         if response.clicked() && !star_clicked {
+                            self.selected_build_index = Some(index);
+                        }
+                        if response.double_clicked() && !star_hovered {
                             self.selected_build_index = Some(index);
                             self.build_location_popup_path = Some(build.path.clone());
                             self.build_location_popup_open = true;
@@ -860,25 +865,27 @@ impl ProjectDashboardApp {
 }
 
 fn toggle_switch(ui: &mut egui::Ui, value: &mut bool) -> egui::Response {
-    let size = Vec2::new(38.0, 20.0);
-    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+    let desired_size = ui.spacing().interact_size.y * Vec2::new(2.0, 1.0);
+    let (rect, mut response) = ui.allocate_exact_size(desired_size, Sense::click());
     if response.clicked() {
         *value = !*value;
+        response.mark_changed();
     }
 
-    let visuals = ui.style().visuals.clone();
-    let on_color = Color32::from_rgb(36, 136, 230);
-    let off_color = visuals.widgets.inactive.bg_fill;
-    let bg_color = if *value { on_color } else { off_color };
-    ui.painter()
-        .rect_filled(rect, rect.height() * 0.5, bg_color);
-
-    let knob_radius = rect.height() * 0.5 - 2.0;
-    let knob_x = if *value {
-        rect.right() - knob_radius - 2.0
+    let how_on = ui.ctx().animate_bool(response.id, *value);
+    let visuals = ui.style().interact(&response);
+    let radius = rect.height() * 0.5;
+    let bg_fill = if *value {
+        Color32::from_rgb(36, 136, 230)
     } else {
-        rect.left() + knob_radius + 2.0
+        visuals.bg_fill
     };
+    ui.painter().rect_filled(rect, radius, bg_fill);
+
+    let knob_radius = radius - 2.0;
+    let left_x = rect.left() + radius;
+    let right_x = rect.right() - radius;
+    let knob_x = egui::lerp(left_x..=right_x, how_on);
     ui.painter().circle_filled(
         egui::pos2(knob_x, rect.center().y),
         knob_radius,
