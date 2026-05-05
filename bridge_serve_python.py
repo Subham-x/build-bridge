@@ -130,6 +130,7 @@ def main():
     print(f"Bridge status: connected")
     print(f"Listening on http://{BIND}:{PORT}")
     print(f"LAN IP: http://{ip}:{PORT}")
+    print(f"SERVER_URL: http://{ip}:{PORT}") # Explicit tag for Rust to parse
 
     socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer((BIND, PORT), BridgeHandler) as httpd:

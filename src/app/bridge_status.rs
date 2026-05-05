@@ -2,7 +2,7 @@ use super::ProjectDashboardApp;
 use crate::models::ProjectRecord;
 use crate::icons::{icon_button, themed_icon, IconKind};
 use eframe::egui::{
-    self, Align, Color32, ColorImage, FontFamily, FontId, Layout, RichText, Vec2,
+    self, Align, Align2, Color32, ColorImage, FontFamily, FontId, Layout, RichText, Vec2,
 };
 use qrcode::{Color, QrCode};
 
@@ -60,100 +60,35 @@ impl ProjectDashboardApp {
             } else {
                 Color32::from_gray(90)
             };
-            if let Some(url) = self.active_serve_url(&project.name) {
-                if self.bridge_qr_url.as_deref() != Some(&url) {
-                    let image = build_qr_image(&url, QR_SCALE, QR_OUTLINE_PX);
-                    let texture = ui.ctx().load_texture(
-                        "bridge_qr",
-                        image,
-                        egui::TextureOptions::NEAREST,
-                    );
-                    self.bridge_qr_texture = Some(texture);
-                    self.bridge_qr_url = Some(url.clone());
-                }
-                if let Some(texture) = self.bridge_qr_texture.as_ref() {
-                    let texture_size = texture.size();
-                    ui.add(
-                        egui::Image::from_texture(texture).fit_to_exact_size(Vec2::new(
-                            texture_size[0] as f32,
-                            texture_size[1] as f32,
-                        )),
-                    );
-                }
-            } else {
-                ui.add_sized(
-                    [88.0, 88.0],
-                    egui::Label::new(RichText::new("QR").size(54.0).strong()),
-                );
-            }
-            ui.add_space(10.0);
+
             ui.vertical(|ui| {
-                let is_online = project.status == "active";
-                let status = if is_online { "Online" } else { "Offline" };
+                let is_online = self.is_bridge_online(&project.name);
+                let status_text = if is_online { "Online" } else { "Offline" };
+                
+                // Status Row
                 ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new("Status : ")
-                            .font(detail_font.clone())
-                            .color(label_color),
-                    );
-                    ui.label(
-                        RichText::new(status)
-                            .font(detail_font.clone())
-                            .color(value_color),
-                    );
+                    ui.label(RichText::new("Status .").font(detail_font.clone()).color(label_color));
+                    ui.label(RichText::new(status_text).font(detail_font.clone()).color(value_color));
                 });
-                if let Some(url) = self.active_serve_url(&project.name) {
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            RichText::new("Link : ")
-                                .font(detail_font.clone())
-                                .color(label_color),
-                        );
-                        ui.label(
-                            RichText::new(url)
-                                .font(detail_font.clone())
-                                .color(value_color),
-                        );
-                    });
-                } else {
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            RichText::new("Port : ")
-                                .font(detail_font.clone())
-                                .color(label_color),
-                        );
-                        ui.label(
-                            RichText::new("8080")
-                                .font(detail_font.clone())
-                                .color(value_color),
-                        );
-                    });
-                }
+
+                // Link Row
                 ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new("Device : ")
-                            .font(detail_font.clone())
-                            .color(label_color),
-                    );
-                    ui.label(
-                        RichText::new("Web")
-                            .font(detail_font.clone())
-                            .color(value_color),
-                    );
+                    ui.label(RichText::new("Link   .").font(detail_font.clone()).color(label_color));
+                    let link_text = if let Some(url) = self.serve_url.as_ref() {
+                        url
+                    } else {
+                        "8080"
+                    };
+                    ui.label(RichText::new(link_text).font(detail_font.clone()).color(value_color));
                 });
+
+                // Type Row
                 ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new("Type : ")
-                            .font(detail_font.clone())
-                            .color(label_color),
-                    );
-                    ui.label(
-                        RichText::new(&self.selected_artifact_type)
-                            .font(detail_font.clone())
-                            .color(value_color),
-                    );
+                    ui.label(RichText::new("Type   .").font(detail_font.clone()).color(label_color));
+                    ui.label(RichText::new("Localhost").font(detail_font.clone()).color(value_color));
                 });
             });
+
             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                 ui.horizontal(|ui| {
                     if ui.button("Edit").clicked() {

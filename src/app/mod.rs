@@ -422,22 +422,49 @@ impl ProjectDashboardApp {
         };
 
         while let Ok(line) = rx.try_recv() {
-            if let Some(url) = line.strip_prefix("Listening on ") {
-                let trimmed = url.trim();
-                let mut resolved = trimmed.to_owned();
-                if (trimmed.starts_with("http://127.0.0.1")
-                    || trimmed.starts_with("http://0.0.0.0"))
-                    && self.serve_host.is_some()
-                {
-                    if let Some(host) = self.serve_host.as_ref() {
-                        resolved = format!("http://{host}:8080/");
-                        self.terminal_lines
-                            .push(format!("Hotspot link: {resolved}"));
+            let trimmed = line.trim();
+            
+            // Capture the actual LAN IP from the Python agent output
+            if let Some(url) = trimmed.strip_prefix("LAN IP: ") {
+                self.serve_url = Some(url.trim().to_owned());
+            } else if let Some(url) = trimmed.strip_prefix("Listening on ") {
+                // Fallback to Listening on if LAN IP hasn't been captured yet
+                if self.serve_url.is_none() {
+                    let url_trimmed = url.trim();
+                    let mut resolved = url_trimmed.to_owned();
+                    if (url_trimmed.starts_with("http://127.0.0.1")
+                        || url_trimmed.starts_with("http://0.0.0.0"))
+                        && self.serve_host.is_some()
+                    {
+                        if let Some(host) = self.serve_host.as_ref() {
+                            resolved = format!("http://{host}:8080/");
+                        }
                     }
+                    self.serve_url = Some(resolved);
                 }
-                self.serve_url = Some(resolved);
             }
+            
             self.terminal_lines.push(line);
+        }
+    }
+
+    pub fn is_bridge_online(&mut self, project_name: &str) -> bool {
+        if self.serve_project.as_deref() != Some(project_name) {
+            return false;
+        }
+
+        if let Some(child) = self.serve_child.as_mut() {
+            match child.try_wait() {
+                Ok(None) => true, // Still running
+                _ => {
+                    self.serve_child = None;
+                    self.serve_url = None;
+                    self.serve_project = None;
+                    false
+                }
+            }
+        } else {
+            false
         }
     }
 
