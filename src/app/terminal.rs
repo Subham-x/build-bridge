@@ -29,18 +29,20 @@ impl ProjectDashboardApp {
             .show(ui, |ui| {
                 let terminal_font = FontId::new(12.5, FontFamily::Name("JetBrainsMono".into()));
                 ui.set_min_height((ui.available_height() - 4.0).max(120.0));
-                if let Some(project_name) = self.selected_project_name.clone() {
-                    let serve_line = format!("PS > serve \"{project_name}\" --mode bridge");
-                    ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                        self.render_terminal_line(ui, &serve_line, &terminal_font);
-                        self.render_terminal_line(ui, "Bridge status: connected", &terminal_font);
+                ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                    if self.terminal_lines.is_empty() {
                         self.render_terminal_line(
                             ui,
-                            "Listening on http://127.1.1.0:4000",
+                            "PS > bridge idle",
                             &terminal_font,
                         );
-                    });
-                }
+                        return;
+                    }
+                    let lines = self.terminal_lines.clone();
+                    for line in &lines {
+                        self.render_terminal_line(ui, line, &terminal_font);
+                    }
+                });
             });
     }
 
@@ -84,7 +86,7 @@ impl ProjectDashboardApp {
                     }
 
                     response.context_menu(|ui| {
-                        // ui.label("Actions");
+                        ui.label("Warning!");
                         if ui.button("Copy").clicked() {
                             ui.ctx().copy_text(token.to_owned());
                             ui.close();

@@ -78,6 +78,8 @@ pub struct ProjectRecord {
     pub builds: Vec<BuildEntry>,
     #[serde(rename = "added-file", default, skip_serializing_if = "Option::is_none")]
     pub added_file: Option<String>,
+    #[serde(rename = "stream-type", default, skip_serializing_if = "Option::is_none")]
+    pub stream_type: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub star: Option<String>,
     pub status: String,

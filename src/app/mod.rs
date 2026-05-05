@@ -16,8 +16,11 @@ use eframe::egui::{
 };
 use std::collections::{BTreeSet, HashSet};
 use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
+use std::sync::mpsc::{self, Receiver};
+use std::thread;
 use std::time::{Duration, Instant};
 
 const REALTIME_SCAN_INTERVAL: Duration = Duration::from_secs(1);
@@ -185,6 +188,9 @@ pub struct ProjectDashboardApp {
     app_config_error: Option<String>,
     preferences: Preferences,
     preferences_file_path: Option<PathBuf>,
+    terminal_lines: Vec<String>,
+    terminal_rx: Option<Receiver<String>>,
+    serve_child: Option<Child>,
 }
 
 impl Default for ProjectDashboardApp {
@@ -264,6 +270,9 @@ impl Default for ProjectDashboardApp {
             app_config_error,
             preferences,
             preferences_file_path,
+            terminal_lines: Vec::new(),
+            terminal_rx: None,
+            serve_child: None,
         }
     }
 }
@@ -296,6 +305,7 @@ impl eframe::App for ProjectDashboardApp {
         }
 
         self.maybe_refresh_realtime_builds();
+        self.poll_terminal_output();
 
         let dark = ctx.style().visuals.dark_mode;
 
@@ -390,6 +400,82 @@ impl ProjectDashboardApp {
     fn set_status_message_tinted(&mut self, message: impl Into<String>, tint: Color32) {
         self.status_message = Some(message.into());
         self.status_message_tint = Some(tint);
+    }
+
+    fn poll_terminal_output(&mut self) {
+        let Some(rx) = self.terminal_rx.as_ref() else {
+            return;
+        };
+
+        while let Ok(line) = rx.try_recv() {
+            self.terminal_lines.push(line);
+        }
+    }
+
+    fn start_bridge_serve(&mut self, project: &ProjectRecord) -> Result<(), String> {
+        let stream_type = project
+            .stream_type
+            .as_deref()
+            .unwrap_or("localhost-token");
+
+        if !stream_type.starts_with("localhost") {
+            self.set_status_message("Serve mode not implemented yet.");
+            return Ok(());
+        }
+
+        if let Some(mut child) = self.serve_child.take() {
+            let _ = child.kill();
+        }
+
+        self.terminal_lines.clear();
+        self.terminal_rx = None;
+        self.terminal_lines.push(format!(
+            "PS > serve \"{}\" --mode bridge",
+            project.name
+        ));
+
+        let projects_path = self
+            .projects_file_path
+            .as_ref()
+            .ok_or_else(|| "Projects file path unavailable.".to_owned())?;
+        let agent_path = locate_bridge_agent()?;
+        let token = if stream_type.contains("token") {
+            Some(generate_token())
+        } else {
+            None
+        };
+
+        let mut command = Command::new(agent_path);
+        command
+            .arg("--projects")
+            .arg(projects_path)
+            .arg("--project")
+            .arg(&project.name)
+            .arg("--port")
+            .arg("4000")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        if let Some(token) = token.as_deref() {
+            command.arg("--token").arg(token);
+            self.terminal_lines
+                .push(format!("Token: {token}"));
+        }
+
+        let mut child = command.spawn().map_err(|err| err.to_string())?;
+        let stdout = child.stdout.take();
+        let stderr = child.stderr.take();
+        let (tx, rx) = mpsc::channel();
+        if let Some(stdout) = stdout {
+            spawn_reader_thread(stdout, tx.clone());
+        }
+        if let Some(stderr) = stderr {
+            spawn_reader_thread(stderr, tx.clone());
+        }
+
+        self.serve_child = Some(child);
+        self.terminal_rx = Some(rx);
+        Ok(())
     }
 
     fn render_status_bar(&mut self, ctx: &egui::Context, dark: bool) {
@@ -902,6 +988,7 @@ impl ProjectDashboardApp {
                     main_path: main_path.to_owned(),
                     builds: Vec::new(),
                     added_file: None,
+                    stream_type: Some("localhost-token".to_owned()),
                     star: None,
                     status: "active".to_owned(),
                     created_on: today.clone(),
@@ -944,6 +1031,24 @@ impl ProjectDashboardApp {
             self.form_error = None;
             self.create_modal_open = true;
         }
+    }
+
+    fn set_project_stream_type(
+        &mut self,
+        project_name: &str,
+        stream_type: &str,
+    ) -> Result<(), String> {
+        let project = self
+            .projects
+            .iter_mut()
+            .find(|project| project.name == project_name)
+            .ok_or_else(|| format!("Project '{project_name}' not found."))?;
+        if project.stream_type.as_deref() == Some(stream_type) {
+            return Ok(());
+        }
+        project.stream_type = Some(stream_type.to_owned());
+        self.persist_projects()?;
+        Ok(())
     }
 
     fn open_project_details(&mut self, project_name: &str) {
@@ -1608,6 +1713,42 @@ fn format_build_timestamp(raw: Option<&str>) -> String {
 
 fn is_terminal_link(token: &str) -> bool {
     token.starts_with("http://") || token.starts_with("https://")
+}
+
+fn locate_bridge_agent() -> Result<PathBuf, String> {
+    let exe_path = std::env::current_exe().map_err(|err| err.to_string())?;
+    let exe_dir = exe_path
+        .parent()
+        .ok_or_else(|| "Executable directory unavailable.".to_owned())?;
+    let agent_name = if cfg!(target_os = "windows") {
+        "bridge_serve_agent.exe"
+    } else {
+        "bridge_serve_agent"
+    };
+    let agent_path = exe_dir.join(agent_name);
+    if !agent_path.exists() {
+        return Err(format!(
+            "Serve agent not found at {}",
+            agent_path.display()
+        ));
+    }
+    Ok(agent_path)
+}
+
+fn generate_token() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    format!("{:x}{:x}", now.as_secs(), now.subsec_nanos())
+}
+
+fn spawn_reader_thread<T: std::io::Read + Send + 'static>(reader: T, tx: mpsc::Sender<String>) {
+    thread::spawn(move || {
+        let buffered = BufReader::new(reader);
+        for line in buffered.lines().flatten() {
+            let _ = tx.send(line);
+        }
+    });
 }
 
 fn project_artifact_type_options(project: &ProjectRecord) -> Vec<String> {

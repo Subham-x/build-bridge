@@ -615,23 +615,51 @@ impl ProjectDashboardApp {
                                                 }
                                                 ui.ctx().set_style(ctx_style_backup);
                                                 block_rects.push(menu_response.response.rect);
-                                                let serve_settings_response = ui
-                                                    .add(
-                                                        icon_button(
+                                                let current_stream_label = project
+                                                    .stream_type
+                                                    .as_deref()
+                                                    .and_then(stream_type_label)
+                                                    .unwrap_or("Select stream");
+                                                let stream_menu = ui
+                                                    .menu_image_button(
+                                                        icon_image(
                                                             themed_icon(dark, IconKind::Broadcast),
-                                                            14.0,
-                                                        )
-                                                        .frame(true)
-                                                        .min_size(Vec2::new(30.0, 26.0)),
-                                                    )
-                                                    .on_hover_text("Serve settings");
-                                                if serve_settings_response.clicked() {
-                                                    self.set_status_message(format!(
-                                                        "Serve settings clicked for '{}'.",
-                                                        project.name
-                                                    ));
+                                                            16.0,
+                                                        ),
+                                                        |ui| {
+                                                            for (label, value) in stream_type_options() {
+                                                                let selected = project
+                                                                    .stream_type
+                                                                    .as_deref()
+                                                                    == Some(value);
+                                                                if ui
+                                                                    .selectable_label(selected, label)
+                                                                    .clicked()
+                                                                {
+                                                                    menu_action_clicked = true;
+                                                                    if let Err(err) =
+                                                                        self.set_project_stream_type(
+                                                                            &project.name,
+                                                                            value,
+                                                                        )
+                                                                    {
+                                                                        self.project_action_error =
+                                                                            Some(err);
+                                                                    }
+                                                                    ui.close();
+                                                                }
+                                                            }
+                                                        },
+                                                    );
+                                                if stream_menu.inner.is_some() {
+                                                    any_menu_open = true;
                                                 }
-                                                block_rects.push(serve_settings_response.rect);
+                                                let stream_menu_response = stream_menu
+                                                    .response
+                                                    .on_hover_text(format!(
+                                                        "Stream: {current_stream_label}"
+                                                    ));
+                                                block_rects.push(stream_menu_response.rect);
                                                 ui.add_space(2.0);
                                                 if self.nav == super::Nav::Archived {
                                                     let unarchive_response = ui.add(
@@ -659,10 +687,9 @@ impl ProjectDashboardApp {
                                                     let serve_response = ui
                                                         .add(super::brand_button("Serve").min_size(Vec2::new(64.0, 26.0)));
                                                     if serve_response.clicked() {
-                                                        self.set_status_message(format!(
-                                                            "Serve clicked for '{}'.",
-                                                            project.name
-                                                        ));
+                                                        if let Err(err) = self.start_bridge_serve(&project) {
+                                                            self.project_action_error = Some(err);
+                                                        }
                                                     }
                                                     block_rects.push(serve_response.rect);
                                                 }
@@ -885,19 +912,38 @@ impl ProjectDashboardApp {
                             ui.add_space(4.0);
                             ui.horizontal(|ui| {
                                 ui.add_sized([label_width, 0.0], Label::new("Start Serve"));
-                                let _ = ui.add(
-                                    icon_button(themed_icon(dark, IconKind::Broadcast), 14.0)
-                                        .frame(true)
-                                        .min_size(Vec2::new(30.0, 26.0)),
-                                );
+                                let current_stream_label = project
+                                    .stream_type
+                                    .as_deref()
+                                    .and_then(stream_type_label)
+                                    .unwrap_or("Select stream");
+                                ui.menu_image_button(
+                                    icon_image(themed_icon(dark, IconKind::Broadcast), 16.0),
+                                    |ui| {
+                                        for (label, value) in stream_type_options() {
+                                            let selected = project.stream_type.as_deref()
+                                                == Some(value);
+                                            if ui.selectable_label(selected, label).clicked() {
+                                                if let Err(err) = self.set_project_stream_type(
+                                                    &project.name,
+                                                    value,
+                                                ) {
+                                                    self.project_action_error = Some(err);
+                                                }
+                                                ui.close();
+                                            }
+                                        }
+                                    },
+                                )
+                                .response
+                                .on_hover_text(format!("Stream: {current_stream_label}"));
                                 ui.add_space(6.0);
                                 let serve_button =
                                     super::brand_button("Serve").min_size(Vec2::new(64.0, 26.0));
                                 if ui.add(serve_button).clicked() {
-                                    self.set_status_message(format!(
-                                        "Serve clicked for '{}'.",
-                                        project.name
-                                    ));
+                                    if let Err(err) = self.start_bridge_serve(project) {
+                                        self.project_action_error = Some(err);
+                                    }
                                 }
                             });
                         });
@@ -1079,6 +1125,22 @@ fn toggle_switch(ui: &mut egui::Ui, value: &mut bool) -> egui::Response {
     );
 
     response
+}
+
+fn stream_type_options() -> [(&'static str, &'static str); 4] {
+    [
+        ("Zrok", "zrok"),
+        ("LocalTunnel", "localtunnel"),
+        ("LocalHost : token", "localhost-token"),
+        ("LocalHost : allowlist + token", "localhost-allowlist-token"),
+    ]
+}
+
+fn stream_type_label(value: &str) -> Option<&'static str> {
+    stream_type_options()
+        .iter()
+        .find(|(_, key)| *key == value)
+        .map(|(label, _)| *label)
 }
 
 fn shorten_project_path(path: &str) -> String {
