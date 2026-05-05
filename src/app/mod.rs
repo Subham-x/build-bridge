@@ -112,6 +112,8 @@ pub struct ProjectDashboardApp {
     terminal_link_target: Option<String>,
     build_location_popup_open: bool,
     build_location_popup_path: Option<String>,
+    project_path_popup_open: bool,
+    project_path_popup_path: Option<String>,
     last_realtime_scan: Option<Instant>,
     app_config: AppConfig,
     app_config_file_path: Option<PathBuf>,
@@ -183,6 +185,8 @@ impl Default for ProjectDashboardApp {
             terminal_link_target: None,
             build_location_popup_open: false,
             build_location_popup_path: None,
+            project_path_popup_open: false,
+            project_path_popup_path: None,
             last_realtime_scan: None,
             app_config,
             app_config_file_path,
@@ -248,6 +252,7 @@ impl eframe::App for ProjectDashboardApp {
         self.render_empty_bin_confirm(ctx);
         self.render_project_action_confirm(ctx);
         self.render_build_location_popup(ctx);
+        self.render_project_path_popup(ctx);
 
         if let Some(err) = self.app_config_error.clone() {
             self.render_error_toast(ctx, &err);
@@ -713,6 +718,76 @@ impl ProjectDashboardApp {
         self.build_location_popup_open = open;
     }
 
+    fn render_project_path_popup(&mut self, ctx: &egui::Context) {
+        if !self.project_path_popup_open {
+            return;
+        }
+
+        let path = match self.project_path_popup_path.clone() {
+            Some(path) => path,
+            None => {
+                self.project_path_popup_open = false;
+                return;
+            }
+        };
+
+        let mut open = self.project_path_popup_open;
+        let mut close_popup = false;
+        let mut open_location = false;
+        let mut copy_path = false;
+        egui::Window::new("Project Location")
+            .collapsible(false)
+            .resizable(false)
+            .open(&mut open)
+            .default_size(Vec2::new(520.0, 160.0))
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Project Location");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("X").on_hover_text("Close").clicked() {
+                            close_popup = true;
+                        }
+                    });
+                });
+                ui.add_space(6.0);
+                ui.label("Location");
+                ui.add_space(6.0);
+                ui.label(
+                    RichText::new(&path)
+                        .italics()
+                        .size(12.0)
+                        .color(ui.style().visuals.weak_text_color()),
+                );
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    if ui.add(brand_button("Open")).clicked() {
+                        open_location = true;
+                    }
+                    if ui.button("Copy").clicked() {
+                        copy_path = true;
+                    }
+                });
+            });
+
+        if open_location {
+            if let Err(err) = self.open_folder_path(&path) {
+                self.project_action_error = Some(err);
+            }
+            close_popup = true;
+        }
+
+        if copy_path {
+            ctx.copy_text(path.clone());
+            close_popup = true;
+        }
+
+        if close_popup || !open {
+            self.project_path_popup_path = None;
+            open = false;
+        }
+        self.project_path_popup_open = open;
+    }
+
     fn create_project(&mut self) -> Result<String, String> {
         let name = self.create_form.name.trim();
         let main_path = self.create_form.main_path.trim();
@@ -804,6 +879,8 @@ impl ProjectDashboardApp {
         self.bridge_status_expanded = false;
         self.terminal_link_popup_open = false;
         self.terminal_link_target = None;
+        self.project_path_popup_open = false;
+        self.project_path_popup_path = None;
     }
 
     fn selected_project(&self) -> Option<ProjectRecord> {
@@ -930,6 +1007,36 @@ impl ProjectDashboardApp {
         let folder = Path::new(path)
             .parent()
             .ok_or_else(|| "Could not determine build folder path.".to_owned())?;
+
+        #[cfg(target_os = "windows")]
+        {
+            Command::new("explorer")
+                .arg(folder)
+                .spawn()
+                .map_err(|err| format!("Failed to open folder: {err}"))?;
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            Command::new("open")
+                .arg(folder)
+                .spawn()
+                .map_err(|err| format!("Failed to open folder: {err}"))?;
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            Command::new("xdg-open")
+                .arg(folder)
+                .spawn()
+                .map_err(|err| format!("Failed to open folder: {err}"))?;
+        }
+
+        Ok(())
+    }
+
+    fn open_folder_path(&self, path: &str) -> Result<(), String> {
+        let folder = Path::new(path);
 
         #[cfg(target_os = "windows")]
         {

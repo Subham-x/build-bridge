@@ -258,7 +258,8 @@ impl ProjectDashboardApp {
                                     || self.empty_bin_confirm_open
                                     || self.pending_project_action.is_some()
                                     || self.terminal_link_popup_open
-                                    || self.build_location_popup_open;
+                                    || self.build_location_popup_open
+                                    || self.project_path_popup_open;
                                 ScrollArea::vertical().max_height(list_height).show(ui, |ui| {
                                     for project in projects {
                                         let mut block_rects = Vec::new();
@@ -331,174 +332,215 @@ impl ProjectDashboardApp {
                                                 ctx_style.spacing.menu_width = menu_width;
                                                 ui.ctx().set_style(ctx_style);
 
-                                                let menu_response = ui.menu_image_button(
-                                                    icon_image(themed_icon(dark, IconKind::MoreVert), 16.0),
-                                                    |ui| {
-                                                    ui.set_width(menu_width);
-                                                    let row_width = ui.available_width();
-
-                                                    let danger_text = Color32::from_rgb(255, 0, 79);
-                                                    let danger_bg = Color32::from_rgba_unmultiplied(255, 0, 79, 40);
-                                                    let menu_row = |ui: &mut egui::Ui,
-                                                                        icon_kind: IconKind,
-                                                                        label: RichText,
-                                                                        icon_tint: Option<Color32>,
-                                                                        hover_bg: Option<Color32>|
-                                                     -> egui::Response {
-                                                        let row_height = ui.spacing().interact_size.y;
-                                                        let (rect, response) = ui.allocate_exact_size(
-                                                            Vec2::new(row_width, row_height),
-                                                            egui::Sense::click(),
-                                                        );
-                                                        let pointer_over = ui
-                                                            .ctx()
-                                                            .pointer_hover_pos()
-                                                            .map_or(false, |pos| rect.contains(pos));
-                                                        let pointer_down = ui.ctx().input(|i| {
-                                                            i.pointer.primary_down()
-                                                                && i.pointer
-                                                                    .interact_pos()
-                                                                    .map_or(false, |pos| rect.contains(pos))
-                                                        });
-                                                        let visuals = ui.style().interact(&response);
-                                                        if pointer_over || pointer_down {
-                                                            let fill = hover_bg.unwrap_or(visuals.bg_fill);
-                                                            ui.painter().rect_filled(
-                                                                rect,
-                                                                CornerRadius::same(6),
-                                                                fill,
-                                                            );
-                                                        }
-                                                        ui.scope_builder(
-                                                            egui::UiBuilder::new()
-                                                                .max_rect(rect)
-                                                                .layout(Layout::left_to_right(Align::Center)),
+                                                let menu_response = ui
+                                                    .scope(|ui| {
+                                                        let button_padding_x =
+                                                            ui.spacing().button_padding.x;
+                                                        ui.spacing_mut().button_padding =
+                                                            Vec2::new(button_padding_x, 5.0);
+                                                        ui.spacing_mut().interact_size =
+                                                            Vec2::new(30.0, 26.0);
+                                                        ui.menu_image_button(
+                                                            icon_image(
+                                                                themed_icon(dark, IconKind::MoreVert),
+                                                                16.0,
+                                                            ),
                                                             |ui| {
-                                                                ui.add_space(ui.spacing().button_padding.x);
-                                                                let mut icon = icon_image(
-                                                                    themed_icon(dark, icon_kind),
-                                                                    icon_size,
+                                                                ui.set_width(menu_width);
+                                                                let row_width = ui.available_width();
+
+                                                                let danger_text =
+                                                                    Color32::from_rgb(255, 0, 79);
+                                                                let danger_bg =
+                                                                    Color32::from_rgba_unmultiplied(255, 0, 79, 40);
+                                                                let menu_row = |ui: &mut egui::Ui,
+                                                                                icon_kind: IconKind,
+                                                                                label: RichText,
+                                                                                icon_tint: Option<Color32>,
+                                                                                hover_bg: Option<Color32>|
+                                                                 -> egui::Response {
+                                                                    let row_height = ui.spacing().interact_size.y;
+                                                                    let (rect, response) =
+                                                                        ui.allocate_exact_size(
+                                                                            Vec2::new(row_width, row_height),
+                                                                            egui::Sense::click(),
+                                                                        );
+                                                                    let pointer_over = ui
+                                                                        .ctx()
+                                                                        .pointer_hover_pos()
+                                                                        .map_or(false, |pos| rect.contains(pos));
+                                                                    let pointer_down =
+                                                                        ui.ctx().input(|i| {
+                                                                            i.pointer.primary_down()
+                                                                                && i.pointer
+                                                                                    .interact_pos()
+                                                                                    .map_or(false, |pos| {
+                                                                                        rect.contains(pos)
+                                                                                    })
+                                                                        });
+                                                                    let visuals =
+                                                                        ui.style().interact(&response);
+                                                                    if pointer_over || pointer_down {
+                                                                        let fill =
+                                                                            hover_bg.unwrap_or(visuals.bg_fill);
+                                                                        ui.painter().rect_filled(
+                                                                            rect,
+                                                                            CornerRadius::same(6),
+                                                                            fill,
+                                                                        );
+                                                                    }
+                                                                    ui.scope_builder(
+                                                                        egui::UiBuilder::new()
+                                                                            .max_rect(rect)
+                                                                            .layout(
+                                                                                Layout::left_to_right(
+                                                                                    Align::Center,
+                                                                                ),
+                                                                            ),
+                                                                        |ui| {
+                                                                            ui.add_space(
+                                                                                ui.spacing().button_padding.x,
+                                                                            );
+                                                                            let mut icon = icon_image(
+                                                                                themed_icon(dark, icon_kind),
+                                                                                icon_size,
+                                                                            );
+                                                                            if let Some(tint) = icon_tint {
+                                                                                icon = icon.tint(tint);
+                                                                            }
+                                                                            ui.add(icon);
+                                                                            ui.add_space(icon_gap);
+                                                                            ui.add(
+                                                                                Label::new(label).selectable(false),
+                                                                            );
+                                                                        },
+                                                                    );
+                                                                    if pointer_over {
+                                                                        ui.ctx().set_cursor_icon(
+                                                                            egui::CursorIcon::PointingHand,
+                                                                        );
+                                                                    }
+                                                                    response
+                                                                };
+
+                                                                let edit_response = menu_row(
+                                                                    ui,
+                                                                    IconKind::ActionEdit,
+                                                                    RichText::new("Edit"),
+                                                                    None,
+                                                                    None,
                                                                 );
-                                                                if let Some(tint) = icon_tint {
-                                                                    icon = icon.tint(tint);
+                                                                if edit_response.clicked() {
+                                                                    menu_action_clicked = true;
+                                                                    self.begin_edit_project(&project.name);
+                                                                    ui.close();
                                                                 }
-                                                                ui.add(icon);
-                                                                ui.add_space(icon_gap);
-                                                                ui.add(Label::new(label).selectable(false));
+                                                                block_rects.push(edit_response.rect);
+                                                                if self.nav != super::Nav::Archived {
+                                                                    let archive_response = menu_row(
+                                                                        ui,
+                                                                        IconKind::ActionArchive,
+                                                                        RichText::new("Archive"),
+                                                                        None,
+                                                                        None,
+                                                                    );
+                                                                    if archive_response.clicked() {
+                                                                        menu_action_clicked = true;
+                                                                        if let Err(err) =
+                                                                            self.archive_project(&project.name)
+                                                                        {
+                                                                            self.project_action_error =
+                                                                                Some(err);
+                                                                        }
+                                                                        ui.close();
+                                                                    }
+                                                                    block_rects.push(archive_response.rect);
+                                                                } else {
+                                                                    let unarchive_response = menu_row(
+                                                                        ui,
+                                                                        IconKind::ActionArchive,
+                                                                        RichText::new("Unarchive"),
+                                                                        None,
+                                                                        None,
+                                                                    );
+                                                                    if unarchive_response.clicked() {
+                                                                        menu_action_clicked = true;
+                                                                        if let Err(err) =
+                                                                            self.unarchive_project(&project.name)
+                                                                        {
+                                                                            self.project_action_error =
+                                                                                Some(err);
+                                                                        }
+                                                                        ui.close();
+                                                                    }
+                                                                    block_rects.push(unarchive_response.rect);
+                                                                }
+
+                                                                if self.nav != super::Nav::Bin {
+                                                                    let bin_label = RichText::new("Move to Bin")
+                                                                        .color(danger_text);
+                                                                    let bin_response = menu_row(
+                                                                        ui,
+                                                                        IconKind::Trash,
+                                                                        bin_label,
+                                                                        Some(danger_text),
+                                                                        Some(danger_bg),
+                                                                    );
+                                                                    if bin_response.clicked() {
+                                                                        menu_action_clicked = true;
+                                                                        self.pending_project_action = Some(
+                                                                            super::ProjectConfirmAction::MoveToBin {
+                                                                                project_name: project.name.clone(),
+                                                                            },
+                                                                        );
+                                                                        ui.close();
+                                                                    }
+                                                                    block_rects.push(bin_response.rect);
+                                                                }
+
+                                                                if self.nav == super::Nav::Bin {
+                                                                    let restore_response = menu_row(
+                                                                        ui,
+                                                                        IconKind::ActionArchive,
+                                                                        RichText::new("Restore"),
+                                                                        None,
+                                                                        None,
+                                                                    );
+                                                                    if restore_response.clicked() {
+                                                                        menu_action_clicked = true;
+                                                                        if let Err(err) =
+                                                                            self.restore_project(&project.name)
+                                                                        {
+                                                                            self.project_action_error =
+                                                                                Some(err);
+                                                                        }
+                                                                        ui.close();
+                                                                    }
+                                                                    block_rects.push(restore_response.rect);
+
+                                                                    let delete_response = menu_row(
+                                                                        ui,
+                                                                        IconKind::ActionDelete,
+                                                                        RichText::new("Permanent Delete")
+                                                                            .color(danger_text),
+                                                                        Some(danger_text),
+                                                                        Some(danger_bg),
+                                                                    );
+                                                                    if delete_response.clicked() {
+                                                                        menu_action_clicked = true;
+                                                                        self.pending_project_action = Some(
+                                                                            super::ProjectConfirmAction::PermanentDelete {
+                                                                                project_name: project.name.clone(),
+                                                                            },
+                                                                        );
+                                                                        ui.close();
+                                                                    }
+                                                                    block_rects.push(delete_response.rect);
+                                                                }
                                                             },
-                                                        );
-                                                        if pointer_over {
-                                                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-                                                        }
-                                                        response
-                                                    };
-
-                                                    let edit_response = menu_row(
-                                                        ui,
-                                                        IconKind::ActionEdit,
-                                                        RichText::new("Edit"),
-                                                        None,
-                                                        None,
-                                                    );
-                                                    if edit_response.clicked() {
-                                                        menu_action_clicked = true;
-                                                        self.begin_edit_project(&project.name);
-                                                        ui.close();
-                                                    }
-                                                    block_rects.push(edit_response.rect);
-                                                    if self.nav != super::Nav::Archived {
-                                                        let archive_response = menu_row(
-                                                            ui,
-                                                            IconKind::ActionArchive,
-                                                            RichText::new("Archive"),
-                                                            None,
-                                                            None,
-                                                        );
-                                                        if archive_response.clicked() {
-                                                            menu_action_clicked = true;
-                                                            if let Err(err) = self.archive_project(&project.name) {
-                                                                self.project_action_error = Some(err);
-                                                            }
-                                                            ui.close();
-                                                        }
-                                                        block_rects.push(archive_response.rect);
-                                                    } else {
-                                                        let unarchive_response = menu_row(
-                                                            ui,
-                                                            IconKind::ActionArchive,
-                                                            RichText::new("Unarchive"),
-                                                            None,
-                                                            None,
-                                                        );
-                                                        if unarchive_response.clicked() {
-                                                            menu_action_clicked = true;
-                                                            if let Err(err) = self.unarchive_project(&project.name) {
-                                                                self.project_action_error = Some(err);
-                                                            }
-                                                            ui.close();
-                                                        }
-                                                        block_rects.push(unarchive_response.rect);
-                                                    }
-
-                                                    if self.nav != super::Nav::Bin {
-                                                        let bin_label =
-                                                            RichText::new("Move to Bin").color(danger_text);
-                                                        let bin_response = menu_row(
-                                                            ui,
-                                                            IconKind::Trash,
-                                                            bin_label,
-                                                            Some(danger_text),
-                                                            Some(danger_bg),
-                                                        );
-                                                        if bin_response.clicked() {
-                                                            menu_action_clicked = true;
-                                                            self.pending_project_action = Some(
-                                                                super::ProjectConfirmAction::MoveToBin {
-                                                                    project_name: project.name.clone(),
-                                                                },
-                                                            );
-                                                            ui.close();
-                                                        }
-                                                        block_rects.push(bin_response.rect);
-                                                    }
-
-                                                    if self.nav == super::Nav::Bin {
-                                                        let restore_response = menu_row(
-                                                            ui,
-                                                            IconKind::ActionArchive,
-                                                            RichText::new("Restore"),
-                                                            None,
-                                                            None,
-                                                        );
-                                                        if restore_response.clicked() {
-                                                            menu_action_clicked = true;
-                                                            if let Err(err) = self.restore_project(&project.name) {
-                                                                self.project_action_error = Some(err);
-                                                            }
-                                                            ui.close();
-                                                        }
-                                                        block_rects.push(restore_response.rect);
-
-                                                        let delete_response = menu_row(
-                                                            ui,
-                                                            IconKind::ActionDelete,
-                                                            RichText::new("Permanent Delete").color(danger_text),
-                                                            Some(danger_text),
-                                                            Some(danger_bg),
-                                                        );
-                                                        if delete_response.clicked() {
-                                                            menu_action_clicked = true;
-                                                            self.pending_project_action = Some(
-                                                                super::ProjectConfirmAction::PermanentDelete {
-                                                                    project_name: project.name.clone(),
-                                                                },
-                                                            );
-                                                            ui.close();
-                                                        }
-                                                        block_rects.push(delete_response.rect);
-                                                    }
-
-                                                });
+                                                        )
+                                                    })
+                                                    .inner;
                                                 if menu_response.inner.is_some() {
                                                     any_menu_open = true;
                                                 }
@@ -506,9 +548,12 @@ impl ProjectDashboardApp {
                                                 block_rects.push(menu_response.response.rect);
                                                 let serve_settings_response = ui
                                                     .add(
-                                                        icon_button(themed_icon(dark, IconKind::Broadcast), 14.0)
-                                                            .frame(true)
-                                                            .min_size(Vec2::new(28.0, 24.0)),
+                                                        icon_button(
+                                                            themed_icon(dark, IconKind::Broadcast),
+                                                            14.0,
+                                                        )
+                                                        .frame(true)
+                                                        .min_size(Vec2::new(30.0, 26.0)),
                                                     )
                                                     .on_hover_text("Serve settings");
                                                 if serve_settings_response.clicked() {
@@ -536,7 +581,8 @@ impl ProjectDashboardApp {
                                                     }
                                                     block_rects.push(restore_response.rect);
                                                 } else if project.status == "active" {
-                                                    let serve_response = ui.add(super::brand_button("Serve"));
+                                                    let serve_response = ui
+                                                        .add(super::brand_button("Serve").min_size(Vec2::new(64.0, 26.0)));
                                                     if serve_response.clicked() {
                                                         self.set_status_message(format!(
                                                             "Serve clicked for '{}'.",
@@ -654,26 +700,46 @@ impl ProjectDashboardApp {
                                 } else {
                                     Color32::from_gray(90)
                                 };
+                                let label_width = 96.0;
+                                let label = |ui: &mut egui::Ui, text: &str| {
+                                    ui.add_sized(
+                                        [label_width, 0.0],
+                                        Label::new(RichText::new(text).color(key_text_color)),
+                                    );
+                                };
                                 ui.horizontal(|ui| {
-                                    ui.colored_label(key_text_color, "Project:");
+                                    label(ui, "Project:");
                                     ui.colored_label(
                                         value_text_color,
                                         RichText::new(&project.name).strong(),
                                     );
                                 });
                                 ui.horizontal(|ui| {
-                                    ui.colored_label(key_text_color, "Project Type:");
+                                    label(ui, "Project Type:");
                                     ui.colored_label(
                                         value_text_color,
                                         RichText::new(map_framework_label(&project.project_type)).strong(),
                                     );
                                 });
                                 ui.horizontal(|ui| {
-                                    ui.colored_label(key_text_color, "Location:");
+                                    label(ui, "Location:");
+                                    let short_path = shorten_project_path(&project.main_path);
                                     ui.colored_label(
                                         value_text_color,
-                                        RichText::new(&project.main_path).strong(),
+                                        RichText::new(short_path).strong(),
                                     );
+                                    ui.add_space(6.0);
+                                    let info_button =
+                                        icon_button(themed_icon(dark, IconKind::Info), 14.0)
+                                            .frame(true)
+                                            .min_size(Vec2::new(24.0, 22.0));
+                                    let info_response =
+                                        ui.add(info_button).on_hover_text("Show full path");
+                                    if info_response.clicked() {
+                                        self.project_path_popup_path =
+                                            Some(project.main_path.clone());
+                                        self.project_path_popup_open = true;
+                                    }
                                 });
                                 ui.horizontal(|ui| {
                                     ui.colored_label(key_text_color, "Feedback:");
@@ -729,9 +795,12 @@ impl ProjectDashboardApp {
                         .corner_radius(CornerRadius::same(0))
                         .inner_margin(Margin::same(8))
                         .show(ui, |ui| {
+                            let label_width = 90.0;
                             ui.horizontal(|ui| {
-                                ui.label("Add file");
-                                if ui.button("+").clicked() {
+                                ui.add_sized([label_width, 0.0], Label::new("Add file"));
+                                let add_button =
+                                    Button::new("+").min_size(Vec2::new(30.0, 26.0));
+                                if ui.add(add_button).clicked() {
                                     self.set_status_message(format!(
                                         "Add build clicked for '{}'.",
                                         project.name
@@ -741,17 +810,22 @@ impl ProjectDashboardApp {
 
                             ui.add_space(4.0);
                             ui.horizontal(|ui| {
-                                ui.label("Real-Time");
+                                ui.add_sized([label_width, 0.0], Label::new("Real-Time"));
                                 toggle_switch(ui, &mut self.real_time_enabled);
                             });
 
+                            ui.add_space(4.0);
                             ui.horizontal(|ui| {
+                                ui.add_sized([label_width, 0.0], Label::new("Start Serve"));
                                 let _ = ui.add(
                                     icon_button(themed_icon(dark, IconKind::Broadcast), 14.0)
                                         .frame(true)
                                         .min_size(Vec2::new(30.0, 26.0)),
                                 );
-                                if ui.add(super::brand_button("Serve")).clicked() {
+                                ui.add_space(6.0);
+                                let serve_button =
+                                    super::brand_button("Serve").min_size(Vec2::new(64.0, 26.0));
+                                if ui.add(serve_button).clicked() {
                                     self.set_status_message(format!(
                                         "Serve clicked for '{}'.",
                                         project.name
@@ -920,4 +994,20 @@ fn toggle_switch(ui: &mut egui::Ui, value: &mut bool) -> egui::Response {
     );
 
     response
+}
+
+fn shorten_project_path(path: &str) -> String {
+    if path.is_empty() {
+        return String::new();
+    }
+
+    let separator = if path.contains('\\') { '\\' } else { '/' };
+    let parts: Vec<&str> = path.split(separator).filter(|part| !part.is_empty()).collect();
+    if parts.len() <= 3 {
+        return path.to_owned();
+    }
+
+    let prefix = format!("{}{}{}", parts[0], separator, parts[1]);
+    let suffix = parts[parts.len() - 1];
+    format!("{prefix}{separator}....{separator}{suffix}")
 }
