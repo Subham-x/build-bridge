@@ -1185,7 +1185,6 @@ impl ProjectDashboardApp {
         self.selected_project_name = Some(project_name.to_owned());
         self.selected_build_index = None;
         self.selected_artifact_type = "Type".to_owned();
-        self.bridge_status_expanded = false;
         self.refresh_android_builds(project_name);
     }
 
@@ -1193,7 +1192,6 @@ impl ProjectDashboardApp {
         self.selected_project_name = None;
         self.selected_build_index = None;
         self.selected_artifact_type = "Type".to_owned();
-        self.bridge_status_expanded = false;
         self.terminal_link_popup_open = false;
         self.terminal_link_target = None;
         self.project_path_popup_open = false;
