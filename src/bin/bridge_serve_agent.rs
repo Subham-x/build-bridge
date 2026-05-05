@@ -3,7 +3,7 @@ use std::env;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use tiny_http::{Response, Server, StatusCode};
+use tiny_http::{Header, Method, Response, Server, StatusCode};
 
 #[derive(Deserialize)]
 struct BuildEntry {
@@ -28,8 +28,9 @@ fn main() {
     let project_name = get_arg_value(&args, "--project").unwrap_or_default();
     let port: u16 = get_arg_value(&args, "--port")
         .and_then(|value| value.parse().ok())
-        .unwrap_or(4000);
-    let token = get_arg_value(&args, "--token");
+        .unwrap_or(8080);
+    let bind = get_arg_value(&args, "--bind").unwrap_or_else(|| "0.0.0.0".to_owned());
+    let host = get_arg_value(&args, "--host").unwrap_or_else(|| bind.clone());
 
     if projects_path.is_empty() || project_name.is_empty() {
         eprintln!("Missing --projects or --project argument.");
@@ -52,7 +53,7 @@ fn main() {
         }
     };
 
-    let site_dir = match build_site(project, token.as_deref()) {
+    let site_dir = match build_site(project) {
         Ok(path) => path,
         Err(err) => {
             eprintln!("Failed to build site: {err}");
@@ -60,48 +61,44 @@ fn main() {
         }
     };
 
-    let address = format!("127.0.0.1:{port}");
+    let address = format!("{}:{}", bind, port);
     let server = match Server::http(&address) {
-        Ok(server) => server,
+        Ok(server) => {
+            println!("Bridge status: connected");
+            println!("--- NETWORK CONFIGURATION ---");
+            println!("Binding Address: {}", address);
+            if !host.is_empty() && host != "0.0.0.0" {
+                println!("Hotspot link: http://{}:{}/", host, port);
+            }
+            println!("Local PC link: http://127.0.0.1:{}/", port);
+            println!("-----------------------------");
+            println!("Keep this window open while downloading.");
+            server
+        },
         Err(err) => {
-            eprintln!("Failed to bind server on {address}: {err}");
+            eprintln!("CRITICAL ERROR: Failed to bind server on {}. Port might be in use.", address);
+            eprintln!("Error details: {err}");
             std::process::exit(1);
         }
     };
 
-    let base_url = if let Some(token) = token.as_deref() {
-        format!("http://{address}/?token={token}")
-    } else {
-        format!("http://{address}/")
-    };
-    println!("Bridge status: connected");
-    println!("Listening on {base_url}");
-
     for request in server.incoming_requests() {
-        let url = request.url();
-        let (path, query) = split_url(url);
-
-        if let Some(required) = token.as_deref() {
-            let token_ok = query
-                .and_then(|query| find_query_param(query, "token"))
-                .map_or(false, |value| value == required);
-            if !token_ok {
-                let response = Response::from_string("Forbidden")
-                    .with_status_code(StatusCode(403));
-                let _ = request.respond(response);
-                continue;
-            }
+        if request.method() == &Method::Options {
+            let response = with_cors(Response::from_string("")
+                .with_status_code(StatusCode(204)));
+            let _ = request.respond(response);
+            continue;
         }
+        let url = request.url();
+        let path = split_url(url);
 
-        let response = if path == "/" {
-            serve_index(&site_dir)
+        if path == "/" {
+            let _ = request.respond(with_cors(serve_index(&site_dir)));
         } else if let Some(path) = path.strip_prefix("/files/") {
-            serve_file(&site_dir, path)
+            let _ = request.respond(with_cors(serve_file(&site_dir, path)));
         } else {
-            Response::from_string("Not found").with_status_code(StatusCode(404))
-        };
-
-        let _ = request.respond(response);
+            let _ = request.respond(with_cors(Response::from_string("Not found").with_status_code(StatusCode(404))));
+        }
     }
 }
 
@@ -117,7 +114,7 @@ fn load_projects(path: &str) -> Result<Vec<ProjectRecord>, String> {
     serde_json::from_str(&data).map_err(|err| err.to_string())
 }
 
-fn build_site(project: &ProjectRecord, token: Option<&str>) -> Result<PathBuf, String> {
+fn build_site(project: &ProjectRecord) -> Result<PathBuf, String> {
     let base_dir = env::temp_dir()
         .join("buildbridge-serve")
         .join(sanitize_segment(&project.name));
@@ -138,7 +135,7 @@ fn build_site(project: &ProjectRecord, token: Option<&str>) -> Result<PathBuf, S
 
     let index_path = base_dir.join("index.html");
     let mut index = fs::File::create(&index_path).map_err(|err| err.to_string())?;
-    let html = build_index_html(&project.name, &items, token);
+    let html = build_index_html(&project.name, &items);
     index.write_all(html.as_bytes()).map_err(|err| err.to_string())?;
 
     Ok(base_dir)
@@ -224,36 +221,36 @@ struct ArtifactItem {
     size: u64,
 }
 
-fn build_index_html(project_name: &str, items: &[ArtifactItem], token: Option<&str>) -> String {
+fn build_index_html(project_name: &str, items: &[ArtifactItem]) -> String {
     let mut html = String::new();
     html.push_str("<!doctype html><html><head><meta charset=\"utf-8\">");
     html.push_str("<title>BuildBridge Serve</title>");
-    html.push_str("<style>body{font-family:Arial,sans-serif;margin:24px;}\n");
-    html.push_str(".item{margin-bottom:12px;}a{color:#1565c0;}</style>");
-    html.push_str("</head><body>");
+    html.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+    html.push_str("<style>body{font-family:Arial,sans-serif;margin:24px;background-color:#f5f5f5;}\n");
+    html.push_str(".card{background:white;padding:16px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1);}\n");
+    html.push_str(".item{margin-bottom:12px;padding:8px;border-bottom:1px solid #eee;}\n");
+    html.push_str("a{color:#1565c0;text-decoration:none;font-weight:bold;font-size:1.1em;}\n");
+    html.push_str("small{color:#666;}</style>");
+    html.push_str("</head><body><div class=\"card\">");
     html.push_str(&format!("<h2>{}</h2>", escape_html(project_name)));
     if items.is_empty() {
         html.push_str("<p>No artifacts available.</p>");
     } else {
-        html.push_str("<ul>");
+        html.push_str("<div>");
         for item in items {
-            html.push_str("<li class=\"item\">");
-            let link = if let Some(token) = token {
-                format!("files/{}?token={}", item.file_name, token)
-            } else {
-                format!("files/{}", item.file_name)
-            };
+            html.push_str("<div class=\"item\">");
+            let link = format!("files/{}", item.file_name);
             html.push_str(&format!(
-                "<a href=\"{}\" download>{}</a> <small>({} bytes)</small>",
+                "<a href=\"{}\" download>{}</a><br><small>Size: {} bytes</small>",
                 escape_html(&link),
                 escape_html(&item.label),
                 item.size
             ));
-            html.push_str("</li>");
+            html.push_str("</div>");
         }
-        html.push_str("</ul>");
+        html.push_str("</div>");
     }
-    html.push_str("</body></html>");
+    html.push_str("</div></body></html>");
     html
 }
 
@@ -265,45 +262,52 @@ fn escape_html(input: &str) -> String {
         .replace('"', "&quot;")
 }
 
-fn split_url(url: &str) -> (&str, Option<&str>) {
-    if let Some((path, query)) = url.split_once('?') {
-        (path, Some(query))
-    } else {
-        (url, None)
-    }
+fn split_url(url: &str) -> &str {
+    url.split_once('?').map(|(path, _)| path).unwrap_or(url)
 }
 
-fn find_query_param<'a>(query: &'a str, key: &str) -> Option<&'a str> {
-    for pair in query.split('&') {
-        let mut iter = pair.splitn(2, '=');
-        if let Some(name) = iter.next() {
-            if name == key {
-                return iter.next();
-            }
-        }
-    }
-    None
+fn with_cors<T>(response: Response<T>) -> Response<T> {
+    response
+        .with_header(cors_header("Access-Control-Allow-Origin", "*"))
+        .with_header(cors_header(
+            "Access-Control-Allow-Methods",
+            "GET, OPTIONS",
+        ))
+        .with_header(cors_header(
+            "Access-Control-Allow-Headers",
+            "Content-Type",
+        ))
 }
 
-fn serve_index(site_dir: &Path) -> Response<std::io::Cursor<Vec<u8>>> {
+fn cors_header(name: &str, value: &str) -> Header {
+    Header::from_bytes(name, value).unwrap_or_else(|_| {
+        Header::from_bytes("Access-Control-Allow-Origin", "*")
+            .expect("static CORS header")
+    })
+}
+
+fn serve_index(site_dir: &Path) -> Response<fs::File> {
     let index_path = site_dir.join("index.html");
-    if let Ok(mut file) = fs::File::open(&index_path) {
-        let mut buffer = Vec::new();
-        if file.read_to_end(&mut buffer).is_ok() {
-            return Response::from_data(buffer);
-        }
+    if let Ok(file) = fs::File::open(&index_path) {
+        Response::from_file(file)
+            .with_header(Header::from_bytes("Content-Type", "text/html").unwrap())
+    } else {
+        Response::from_string("Index not found").with_status_code(StatusCode(404))
     }
-    Response::from_string("Index not found").with_status_code(StatusCode(404))
 }
 
-fn serve_file(site_dir: &Path, file_name: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+fn serve_file(site_dir: &Path, file_name: &str) -> Response<fs::File> {
     let safe_name = sanitize_segment(file_name);
     let file_path = site_dir.join("files").join(safe_name);
-    if let Ok(mut file) = fs::File::open(&file_path) {
-        let mut buffer = Vec::new();
-        if file.read_to_end(&mut buffer).is_ok() {
-            return Response::from_data(buffer);
-        }
+    if let Ok(file) = fs::File::open(&file_path) {
+        let content_type = if file_path.extension().and_then(|e| e.to_str()) == Some("apk") {
+            "application/vnd.android.package-archive"
+        } else {
+            "application/octet-stream"
+        };
+        Response::from_file(file)
+            .with_header(Header::from_bytes("Content-Type", content_type).unwrap())
+    } else {
+        Response::from_string("File not found").with_status_code(StatusCode(404))
     }
-    Response::from_string("File not found").with_status_code(StatusCode(404))
 }

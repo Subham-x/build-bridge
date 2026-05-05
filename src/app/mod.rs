@@ -12,11 +12,14 @@ use crate::storage::{current_date, init_storage, save_projects};
 use chrono::{DateTime, Local};
 use directories::UserDirs;
 use eframe::egui::{
-    self, Button, Color32, ComboBox, RichText, TextEdit, ThemePreference, TopBottomPanel, Vec2,
+    self, Button, Color32, ComboBox, RichText, TextEdit, ThemePreference, TextureHandle,
+    TopBottomPanel, Vec2,
 };
+use local_ip_address::local_ip;
 use std::collections::{BTreeSet, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader};
+use std::net::{IpAddr, Ipv4Addr, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
@@ -191,6 +194,12 @@ pub struct ProjectDashboardApp {
     terminal_lines: Vec<String>,
     terminal_rx: Option<Receiver<String>>,
     serve_child: Option<Child>,
+    serve_url: Option<String>,
+    serve_token: Option<String>,
+    serve_host: Option<String>,
+    serve_project: Option<String>,
+    bridge_qr_texture: Option<TextureHandle>,
+    bridge_qr_url: Option<String>,
 }
 
 impl Default for ProjectDashboardApp {
@@ -273,6 +282,12 @@ impl Default for ProjectDashboardApp {
             terminal_lines: Vec::new(),
             terminal_rx: None,
             serve_child: None,
+            serve_url: None,
+            serve_token: None,
+            serve_host: None,
+            serve_project: None,
+            bridge_qr_texture: None,
+            bridge_qr_url: None,
         }
     }
 }
@@ -408,6 +423,21 @@ impl ProjectDashboardApp {
         };
 
         while let Ok(line) = rx.try_recv() {
+            if let Some(url) = line.strip_prefix("Listening on ") {
+                let trimmed = url.trim();
+                let mut resolved = trimmed.to_owned();
+                if (trimmed.starts_with("http://127.0.0.1")
+                    || trimmed.starts_with("http://0.0.0.0"))
+                    && self.serve_host.is_some()
+                {
+                    if let Some(host) = self.serve_host.as_ref() {
+                        resolved = format!("http://{host}:8080/");
+                        self.terminal_lines
+                            .push(format!("Hotspot link: {resolved}"));
+                    }
+                }
+                self.serve_url = Some(resolved);
+            }
             self.terminal_lines.push(line);
         }
     }
@@ -423,9 +453,7 @@ impl ProjectDashboardApp {
             return Ok(());
         }
 
-        if let Some(mut child) = self.serve_child.take() {
-            let _ = child.kill();
-        }
+        self.stop_bridge_serve();
 
         self.terminal_lines.clear();
         self.terminal_rx = None;
@@ -433,49 +461,111 @@ impl ProjectDashboardApp {
             "PS > serve \"{}\" --mode bridge",
             project.name
         ));
+        self.terminal_lines
+            .push("Starting bridge agent...".to_owned());
+
+        let (host_ip, alt_hosts) = resolve_lan_host();
+        let bind_addr = "0.0.0.0".to_owned();
+
+        if host_ip.is_empty() {
+            self.terminal_lines.push("Warning: No LAN IP detected. Server might only be accessible locally.".to_owned());
+        } else {
+            self.terminal_lines.push(format!("LAN IP: http://{}:8080/", host_ip));
+            for alt in &alt_hosts {
+                self.terminal_lines.push(format!("Alternative LAN IP: http://{}:8080/", alt));
+            }
+        }
+
+        self.serve_host = if host_ip.is_empty() {
+            None
+        } else {
+            Some(host_ip.clone())
+        };
+        self.serve_project = Some(project.name.clone());
 
         let projects_path = self
             .projects_file_path
             .as_ref()
             .ok_or_else(|| "Projects file path unavailable.".to_owned())?;
         let agent_path = locate_bridge_agent()?;
-        let token = if stream_type.contains("token") {
-            Some(generate_token())
-        } else {
-            None
-        };
 
-        let mut command = Command::new(agent_path);
-        command
-            .arg("--projects")
-            .arg(projects_path)
-            .arg("--project")
-            .arg(&project.name)
-            .arg("--port")
-            .arg("4000")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        self.serve_token = None;
+        self.serve_url = None;
 
-        if let Some(token) = token.as_deref() {
-            command.arg("--token").arg(token);
+        let mut args = vec![
+            "--projects".to_owned(),
+            projects_path.display().to_string(),
+            "--project".to_owned(),
+            project.name.clone(),
+            "--bind".to_owned(),
+            bind_addr.clone(),
+            "--port".to_owned(),
+            "8080".to_owned(),
+        ];
+        if !host_ip.is_empty() {
+            args.push("--host".to_owned());
+            args.push(host_ip.clone());
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            let mut command_line = format!(
+                "python bridge_serve_python.py --projects \"{}\" --project \"{}\" --bind {} --port 8080",
+                projects_path.display(),
+                project.name,
+                bind_addr
+            );
+            if !host_ip.is_empty() {
+                command_line.push_str(&format!(" --host {}", host_ip));
+            }
+            self.open_terminal_with_command(&command_line)?;
             self.terminal_lines
-                .push(format!("Token: {token}"));
+                .push("Server opened in Windows terminal (Python).".to_owned());
+            return Ok(());
         }
 
-        let mut child = command.spawn().map_err(|err| err.to_string())?;
-        let stdout = child.stdout.take();
-        let stderr = child.stderr.take();
+        let mut child = Command::new(&agent_path)
+            .args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|err| {
+                let message = format!("Failed to launch bridge agent: {err}");
+                self.terminal_lines.push(format!("Error: {message}"));
+                message
+            })?;
+
+        let stdout = child.stdout.take().ok_or_else(|| {
+            let message = "Bridge agent stdout unavailable.".to_owned();
+            self.terminal_lines.push(format!("Error: {message}"));
+            message
+        })?;
+        let stderr = child.stderr.take().ok_or_else(|| {
+            let message = "Bridge agent stderr unavailable.".to_owned();
+            self.terminal_lines.push(format!("Error: {message}"));
+            message
+        })?;
+
         let (tx, rx) = mpsc::channel();
-        if let Some(stdout) = stdout {
-            spawn_reader_thread(stdout, tx.clone());
-        }
-        if let Some(stderr) = stderr {
-            spawn_reader_thread(stderr, tx.clone());
-        }
-
-        self.serve_child = Some(child);
+        spawn_reader_thread(stdout, tx.clone());
+        spawn_reader_thread(stderr, tx);
         self.terminal_rx = Some(rx);
+        self.serve_child = Some(child);
         Ok(())
+    }
+
+    fn stop_bridge_serve(&mut self) {
+        if let Some(mut child) = self.serve_child.take() {
+            let _ = child.kill();
+        }
+        self.terminal_rx = None;
+        self.serve_url = None;
+        self.serve_token = None;
+        self.serve_host = None;
+        self.serve_project = None;
+        self.bridge_qr_texture = None;
+        self.bridge_qr_url = None;
+        self.terminal_lines.push("Bridge stopped".to_owned());
     }
 
     fn render_status_bar(&mut self, ctx: &egui::Context, dark: bool) {
@@ -1532,6 +1622,12 @@ impl ProjectDashboardApp {
     fn render_debug_page(&mut self, ui: &mut egui::Ui, _dark: bool) {
         ui.heading("Debug Page");
         ui.add_space(16.0);
+        if ui.button("Open Terminal").clicked() {
+            if let Err(err) = self.open_system_terminal() {
+                self.app_config_error = Some(err);
+            }
+        }
+        ui.add_space(8.0);
         if ui.button("Open Config Folder").clicked() {
             if let Err(err) = self.open_config_folder() {
                 self.app_config_error = Some(err);
@@ -1571,6 +1667,79 @@ impl ProjectDashboardApp {
             Ok(())
         } else {
             Err("App config file path not set.".to_owned())
+        }
+    }
+
+    fn open_system_terminal(&self) -> Result<(), String> {
+        #[cfg(target_os = "windows")]
+        {
+            Command::new("cmd")
+                .args(["/C", "start", "powershell"])
+                .spawn()
+                .map_err(|err| format!("Failed to open terminal: {err}"))?;
+            return Ok(());
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            Command::new("open")
+                .arg("-a")
+                .arg("Terminal")
+                .spawn()
+                .map_err(|err| format!("Failed to open terminal: {err}"))?;
+            return Ok(());
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            Command::new("x-terminal-emulator")
+                .spawn()
+                .map_err(|err| format!("Failed to open terminal: {err}"))?;
+            return Ok(());
+        }
+    }
+
+    fn open_terminal_with_command(&self, command_line: &str) -> Result<(), String> {
+        #[cfg(target_os = "windows")]
+        {
+            // Try to add firewall rule. This uses Start-Process -Verb RunAs to request elevation 
+            // ONLY for this specific command, and only if the rule doesn't exist.
+            let firewall_cmd = "if (!(Get-NetFirewallRule -DisplayName 'BuildBridge Serve' -ErrorAction SilentlyContinue)) { \
+                                   Start-Process powershell -ArgumentList \"-Command New-NetFirewallRule -DisplayName 'BuildBridge Serve' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8080\" -Verb RunAs \
+                               }";
+            
+            let _ = Command::new("powershell")
+                .args(["-Command", firewall_cmd])
+                .spawn();
+
+            Command::new("cmd")
+                .args(["/C", "start", "powershell", "-NoExit", "-Command", command_line])
+                .spawn()
+                .map_err(|err| format!("Failed to open terminal: {err}"))?;
+            return Ok(());
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            Command::new("open")
+                .arg("-a")
+                .arg("Terminal")
+                .arg("--args")
+                .arg("-l")
+                .arg(command_line)
+                .spawn()
+                .map_err(|err| format!("Failed to open terminal: {err}"))?;
+            return Ok(());
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            Command::new("x-terminal-emulator")
+                .arg("-e")
+                .arg(command_line)
+                .spawn()
+                .map_err(|err| format!("Failed to open terminal: {err}"))?;
+            return Ok(());
         }
     }
 
@@ -1740,6 +1909,70 @@ fn generate_token() -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
     format!("{:x}{:x}", now.as_secs(), now.subsec_nanos())
+}
+
+fn resolve_lan_host() -> (String, Vec<Ipv4Addr>) {
+    let mut candidates = list_lan_ipv4();
+
+    // Prioritize the IP that is actually used to reach the internet.
+    if let Ok(active_ip) = detect_local_ipv4() {
+        if !active_ip.is_loopback() && !active_ip.is_unspecified() {
+            candidates.retain(|ip| *ip != active_ip);
+            return (active_ip.to_string(), candidates);
+        }
+    }
+
+    let preferred = candidates
+        .iter()
+        .copied()
+        .find(|ip| ip.octets()[0] == 192 && ip.octets()[1] == 168)
+        .or_else(|| {
+            candidates.iter().copied().find(|ip| {
+                let octets = ip.octets();
+                octets[0] == 172 && (16..=31).contains(&octets[1])
+            })
+        })
+        .or_else(|| candidates.iter().copied().find(|ip| ip.octets()[0] == 10))
+        .or_else(|| candidates.first().copied());
+
+    if let Some(preferred_ip) = preferred {
+        candidates.retain(|ip| *ip != preferred_ip);
+        (preferred_ip.to_string(), candidates)
+    } else {
+        (String::new(), Vec::new())
+    }
+}
+
+fn detect_local_ipv4() -> Result<Ipv4Addr, String> {
+    let socket = UdpSocket::bind(("0.0.0.0", 0)).map_err(|err| err.to_string())?;
+    // Try to connect to a public DNS server to find the active local IP
+    let _ = socket.connect(("8.8.8.8", 80));
+    match socket.local_addr() {
+        Ok(addr) => match addr.ip() {
+            IpAddr::V4(v4) if !v4.is_loopback() && !v4.is_unspecified() => Ok(v4),
+            _ => Err("No IPv4 address found".to_owned()),
+        },
+        Err(err) => Err(err.to_string()),
+    }
+}
+
+fn list_lan_ipv4() -> Vec<Ipv4Addr> {
+    let mut ips = Vec::new();
+    if let Ok(addrs) = get_if_addrs::get_if_addrs() {
+        for addr in addrs {
+            if let IpAddr::V4(v4) = addr.ip() {
+                // Ignore loopback and unspecified addresses
+                if v4.is_loopback() || v4.is_unspecified() {
+                    continue;
+                }
+                // Include any valid IPv4 address found on local interfaces
+                ips.push(v4);
+            }
+        }
+    }
+    ips.sort();
+    ips.dedup();
+    ips
 }
 
 fn spawn_reader_thread<T: std::io::Read + Send + 'static>(reader: T, tx: mpsc::Sender<String>) {
