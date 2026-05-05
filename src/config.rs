@@ -40,6 +40,22 @@ pub struct ProjectSettings {
 pub struct Config {
     #[serde(rename = "sidePane")]
     pub side_pane: SidePane,
+    #[serde(rename = "project-list", default)]
+    pub project_list: ProjectListConfig,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ProjectListConfig {
+    #[serde(default)]
+    pub sort: SortConfig,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct SortConfig {
+    #[serde(rename = "sort-by", default)]
+    pub sort_by: String,
+    #[serde(default)]
+    pub order: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -64,7 +80,25 @@ impl Default for Preferences {
                     width: None,
                     collapsed: false,
                 },
+                project_list: ProjectListConfig::default(),
             },
+        }
+    }
+}
+
+impl Default for ProjectListConfig {
+    fn default() -> Self {
+        Self {
+            sort: SortConfig::default(),
+        }
+    }
+}
+
+impl Default for SortConfig {
+    fn default() -> Self {
+        Self {
+            sort_by: "Title".to_owned(),
+            order: "Asc".to_owned(),
         }
     }
 }

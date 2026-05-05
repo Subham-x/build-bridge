@@ -45,6 +45,19 @@ enum AppThemeMode {
     Light,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ProjectSortBy {
+    Title,
+    DateCreated,
+    ProjectType,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ProjectSortOrder {
+    Asc,
+    Desc,
+}
+
 #[derive(Clone, PartialEq, Eq)]
 enum ProjectConfirmAction {
     MoveToBin { project_name: String },
@@ -70,6 +83,55 @@ impl AppThemeMode {
             Self::System => ThemePreference::System,
             Self::Dark => ThemePreference::Dark,
             Self::Light => ThemePreference::Light,
+        }
+    }
+}
+
+impl ProjectSortBy {
+    fn from_pref(value: &str) -> Self {
+        match value.to_lowercase().as_str() {
+            "date created" | "date_created" | "created" => Self::DateCreated,
+            "project type" | "project_type" | "type" => Self::ProjectType,
+            _ => Self::Title,
+        }
+    }
+
+    fn as_pref(self) -> &'static str {
+        match self {
+            Self::Title => "Title",
+            Self::DateCreated => "Date Created",
+            Self::ProjectType => "Project Type",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Title => "Project Title",
+            Self::DateCreated => "Date Created",
+            Self::ProjectType => "Project Type",
+        }
+    }
+}
+
+impl ProjectSortOrder {
+    fn from_pref(value: &str) -> Self {
+        match value.to_lowercase().as_str() {
+            "desc" | "descending" => Self::Desc,
+            _ => Self::Asc,
+        }
+    }
+
+    fn as_pref(self) -> &'static str {
+        match self {
+            Self::Asc => "Asc",
+            Self::Desc => "Desc",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Asc => "Ascending",
+            Self::Desc => "Descending",
         }
     }
 }
@@ -114,6 +176,8 @@ pub struct ProjectDashboardApp {
     build_location_popup_path: Option<String>,
     project_path_popup_open: bool,
     project_path_popup_path: Option<String>,
+    project_sort_by: ProjectSortBy,
+    project_sort_order: ProjectSortOrder,
     last_realtime_scan: Option<Instant>,
     app_config: AppConfig,
     app_config_file_path: Option<PathBuf>,
@@ -146,6 +210,10 @@ impl Default for ProjectDashboardApp {
         let sidebar_visible = !preferences.config.side_pane.collapsed;
         let bridge_status_expanded = !preferences.project_settings.build_status_collapse;
         let real_time_enabled = preferences.project_settings.real_time;
+        let project_sort_by =
+            ProjectSortBy::from_pref(&preferences.config.project_list.sort.sort_by);
+        let project_sort_order =
+            ProjectSortOrder::from_pref(&preferences.config.project_list.sort.order);
 
         Self {
             zoom_applied: false,
@@ -187,6 +255,8 @@ impl Default for ProjectDashboardApp {
             build_location_popup_path: None,
             project_path_popup_open: false,
             project_path_popup_path: None,
+            project_sort_by,
+            project_sort_order,
             last_realtime_scan: None,
             app_config,
             app_config_file_path,
@@ -284,6 +354,16 @@ impl eframe::App for ProjectDashboardApp {
         }
         if self.preferences.project_settings.real_time != self.real_time_enabled {
             self.preferences.project_settings.real_time = self.real_time_enabled;
+            changed = true;
+        }
+        if self.preferences.config.project_list.sort.sort_by != self.project_sort_by.as_pref() {
+            self.preferences.config.project_list.sort.sort_by =
+                self.project_sort_by.as_pref().to_owned();
+            changed = true;
+        }
+        if self.preferences.config.project_list.sort.order != self.project_sort_order.as_pref() {
+            self.preferences.config.project_list.sort.order =
+                self.project_sort_order.as_pref().to_owned();
             changed = true;
         }
 
@@ -1106,7 +1186,7 @@ impl ProjectDashboardApp {
 
     fn filtered_projects(&self) -> Vec<ProjectRecord> {
         let query = self.search_text.to_lowercase();
-        self.projects
+        let mut filtered: Vec<ProjectRecord> = self.projects
             .iter()
             .filter(|project| {
                 let nav_match = match self.nav {
@@ -1124,7 +1204,26 @@ impl ProjectDashboardApp {
                 nav_match && search_match
             })
             .cloned()
-            .collect()
+            .collect();
+
+        filtered.sort_by(|a, b| {
+            let cmp = match self.project_sort_by {
+                ProjectSortBy::Title => a
+                    .name
+                    .to_lowercase()
+                    .cmp(&b.name.to_lowercase()),
+                ProjectSortBy::DateCreated => a.created_on.cmp(&b.created_on),
+                ProjectSortBy::ProjectType => map_framework_label(&a.project_type)
+                    .to_lowercase()
+                    .cmp(&map_framework_label(&b.project_type).to_lowercase()),
+            };
+            match self.project_sort_order {
+                ProjectSortOrder::Asc => cmp,
+                ProjectSortOrder::Desc => cmp.reverse(),
+            }
+        });
+
+        filtered
     }
 
     fn archive_project(&mut self, project_name: &str) -> Result<(), String> {

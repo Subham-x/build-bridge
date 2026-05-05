@@ -89,6 +89,7 @@ impl ProjectDashboardApp {
                 });
                 ui.add_space(8.0);
 
+                let mut sort_menu_open = false;
                 if !in_project_page {
                     ui.horizontal(|ui| {
                         let sort_base = ui.spacing().interact_size.y;
@@ -130,10 +131,71 @@ impl ProjectDashboardApp {
                             }
                         }
 
-                        let _ = ui.add(
-                            icon_button(themed_icon(dark, IconKind::Sort), search_height)
-                                .min_size(Vec2::splat(search_height)),
+                        let sort_menu = ui.menu_image_button(
+                            icon_image(themed_icon(dark, IconKind::Sort), search_height),
+                            |ui| {
+                                ui.label("Sort by");
+                                ui.separator();
+                                if ui
+                                    .selectable_value(
+                                        &mut self.project_sort_by,
+                                        super::ProjectSortBy::Title,
+                                        super::ProjectSortBy::Title.label(),
+                                    )
+                                    .clicked()
+                                {
+                                    ui.close_menu();
+                                }
+                                if ui
+                                    .selectable_value(
+                                        &mut self.project_sort_by,
+                                        super::ProjectSortBy::DateCreated,
+                                        super::ProjectSortBy::DateCreated.label(),
+                                    )
+                                    .clicked()
+                                {
+                                    ui.close_menu();
+                                }
+                                if ui
+                                    .selectable_value(
+                                        &mut self.project_sort_by,
+                                        super::ProjectSortBy::ProjectType,
+                                        super::ProjectSortBy::ProjectType.label(),
+                                    )
+                                    .clicked()
+                                {
+                                    ui.close_menu();
+                                }
+
+                                ui.add_space(8.0);
+                                // ui.separator();
+                                // ui.label("Order");
+                                ui.separator();
+                                if ui
+                                    .selectable_value(
+                                        &mut self.project_sort_order,
+                                        super::ProjectSortOrder::Asc,
+                                        super::ProjectSortOrder::Asc.label(),
+                                    )
+                                    .clicked()
+                                {
+                                    ui.close_menu();
+                                }
+                                if ui
+                                    .selectable_value(
+                                        &mut self.project_sort_order,
+                                        super::ProjectSortOrder::Desc,
+                                        super::ProjectSortOrder::Desc.label(),
+                                    )
+                                    .clicked()
+                                {
+                                    ui.close_menu();
+                                }
+                            },
                         );
+                        if sort_menu.inner.is_some() {
+                            sort_menu_open = true;
+                        }
                     });
                 }
 
@@ -259,7 +321,8 @@ impl ProjectDashboardApp {
                                     || self.pending_project_action.is_some()
                                     || self.terminal_link_popup_open
                                     || self.build_location_popup_open
-                                    || self.project_path_popup_open;
+                                    || self.project_path_popup_open
+                                    || sort_menu_open;
                                 ScrollArea::vertical().max_height(list_height).show(ui, |ui| {
                                     for project in projects {
                                         let mut block_rects = Vec::new();
@@ -742,7 +805,7 @@ impl ProjectDashboardApp {
                                     }
                                 });
                                 ui.horizontal(|ui| {
-                                    ui.colored_label(key_text_color, "Feedback:");
+                                    label(ui, "Feedback:");
                                     if ui
                                         .add(
                                             Button::new(
@@ -795,7 +858,7 @@ impl ProjectDashboardApp {
                         .corner_radius(CornerRadius::same(0))
                         .inner_margin(Margin::same(8))
                         .show(ui, |ui| {
-                            let label_width = 90.0;
+                            let label_width = 96.0;
                             ui.horizontal(|ui| {
                                 ui.add_sized([label_width, 0.0], Label::new("Add file"));
                                 let add_button =
