@@ -10,6 +10,7 @@ use crate::icons::{icon_button, icon_image, themed_icon, IconKind};
 use crate::models::{BuildEntry, CreateProjectForm, ProjectRecord, ProjectType};
 use crate::storage::{current_date, init_storage, save_projects};
 use chrono::{DateTime, Local};
+use directories::UserDirs;
 use eframe::egui::{
     self, Button, Color32, ComboBox, RichText, TextEdit, ThemePreference, TopBottomPanel, Vec2,
 };
@@ -900,6 +901,7 @@ impl ProjectDashboardApp {
                     project_type: self.create_form.project_type.storage_value().to_owned(),
                     main_path: main_path.to_owned(),
                     builds: Vec::new(),
+                    added_file: None,
                     star: None,
                     status: "active".to_owned(),
                     created_on: today.clone(),
@@ -1142,6 +1144,35 @@ impl ProjectDashboardApp {
                 .map_err(|err| format!("Failed to open folder: {err}"))?;
         }
 
+        Ok(())
+    }
+
+    fn open_feedback_folder(&self, project_name: &str) -> Result<(), String> {
+        let user_dirs = UserDirs::new()
+            .ok_or_else(|| "Unable to resolve user directories.".to_owned())?;
+        let home_dir = user_dirs.home_dir();
+        let folder = home_dir
+            .join("Build Bridge")
+            .join(project_name)
+            .join("feedback");
+        fs::create_dir_all(&folder).map_err(|err| {
+            format!("Failed to create feedback folder '{}': {err}", folder.display())
+        })?;
+        self.open_folder_path(&folder.to_string_lossy())
+    }
+
+    fn add_extra_file(&mut self, project_name: &str, file_path: PathBuf) -> Result<(), String> {
+        let project = self
+            .projects
+            .iter_mut()
+            .find(|project| project.name == project_name)
+            .ok_or_else(|| format!("Project '{project_name}' not found."))?;
+        let path_str = file_path.display().to_string();
+        if project.added_file.as_deref() == Some(path_str.as_str()) {
+            return Ok(());
+        }
+        project.added_file = Some(path_str);
+        self.persist_projects()?;
         Ok(())
     }
 

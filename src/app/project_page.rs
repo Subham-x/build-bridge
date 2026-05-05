@@ -225,7 +225,10 @@ impl ProjectDashboardApp {
                                 }
                             }
                         }
-                        if ui.add(super::brand_button("Unarchive")).clicked() {
+                        if ui
+                            .add(super::brand_button("Unarchive").min_size(Vec2::new(64.0, 26.0)))
+                            .clicked()
+                        {
                             let selected = self.archive_selected.clone();
                             match self.bulk_unarchive_projects(&selected) {
                                 Ok(count) => {
@@ -271,7 +274,10 @@ impl ProjectDashboardApp {
                                 }
                             }
                         }
-                        if ui.add(super::brand_button("Restore")).clicked() {
+                        if ui
+                            .add(super::brand_button("Restore").min_size(Vec2::new(64.0, 26.0)))
+                            .clicked()
+                        {
                             let selected = self.bin_selected.clone();
                             match self.bulk_restore_projects(&selected) {
                                 Ok(count) => {
@@ -628,7 +634,10 @@ impl ProjectDashboardApp {
                                                 block_rects.push(serve_settings_response.rect);
                                                 ui.add_space(2.0);
                                                 if self.nav == super::Nav::Archived {
-                                                    let unarchive_response = ui.add(super::brand_button("Unarchive"));
+                                                    let unarchive_response = ui.add(
+                                                        super::brand_button("Unarchive")
+                                                            .min_size(Vec2::new(64.0, 26.0)),
+                                                    );
                                                     if unarchive_response.clicked() {
                                                         if let Err(err) = self.unarchive_project(&project.name) {
                                                             self.project_action_error = Some(err);
@@ -636,7 +645,10 @@ impl ProjectDashboardApp {
                                                     }
                                                     block_rects.push(unarchive_response.rect);
                                                 } else if self.nav == super::Nav::Bin {
-                                                    let restore_response = ui.add(super::brand_button("Restore"));
+                                                    let restore_response = ui.add(
+                                                        super::brand_button("Restore")
+                                                            .min_size(Vec2::new(64.0, 26.0)),
+                                                    );
                                                     if restore_response.clicked() {
                                                         if let Err(err) = self.restore_project(&project.name) {
                                                             self.project_action_error = Some(err);
@@ -817,23 +829,8 @@ impl ProjectDashboardApp {
                                         )
                                         .clicked()
                                     {
-                                        if let Some(parent) = self
-                                            .projects_file_path
-                                            .as_ref()
-                                            .and_then(|p| p.parent())
-                                        {
-                                            let folder_url = format!(
-                                                "file:///{}",
-                                                parent.display().to_string().replace('\\', "/")
-                                            );
-                                            ui.ctx().open_url(egui::OpenUrl {
-                                                url: folder_url,
-                                                new_tab: false,
-                                            });
-                                        } else {
-                                            self.set_status_message(
-                                                "Feedback folder path unavailable.",
-                                            );
+                                        if let Err(err) = self.open_feedback_folder(&project.name) {
+                                            self.project_action_error = Some(err);
                                         }
                                     }
                                 });
@@ -864,10 +861,18 @@ impl ProjectDashboardApp {
                                 let add_button =
                                     Button::new("+").min_size(Vec2::new(30.0, 26.0));
                                 if ui.add(add_button).clicked() {
-                                    self.set_status_message(format!(
-                                        "Add build clicked for '{}'.",
-                                        project.name
-                                    ));
+                                    let picked_file = rfd::FileDialog::new()
+                                        .set_directory(&project.main_path)
+                                        .pick_file();
+                                    if let Some(path) = picked_file {
+                                        match self.add_extra_file(&project.name, path) {
+                                            Ok(()) => self.set_status_message(format!(
+                                                "Extra file added for '{}'.",
+                                                project.name
+                                            )),
+                                            Err(err) => self.project_action_error = Some(err),
+                                        }
+                                    }
                                 }
                             });
 
@@ -1024,6 +1029,23 @@ impl ProjectDashboardApp {
                         ui.add_space(6.0);
                     }
                 });
+
+            ui.add_space(10.0);
+            let extra_count = if project.added_file.is_some() { 1 } else { 0 };
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(format!("Extra Added ({})", extra_count)).strong());
+            });
+            ui.add_space(6.0);
+            ScrollArea::vertical()
+                .id_source("extra_added_scroll")
+                .max_height(80.0)
+                .show(ui, |ui| {
+                if let Some(extra_path) = &project.added_file {
+                    ui.label(RichText::new(extra_path).strong());
+                } else {
+                    ui.label("No extra files added.");
+                }
+            });
         });
     }
 }
