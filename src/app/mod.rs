@@ -6,7 +6,7 @@ mod theme_popup;
 
 use crate::config::{init_app_config, init_preferences, save_preferences, AppConfig, Preferences};
 
-use crate::icons::{icon_image, themed_icon, IconKind};
+use crate::icons::{icon_button, icon_image, themed_icon, IconKind};
 use crate::models::{BuildEntry, CreateProjectForm, ProjectRecord, ProjectType};
 use crate::storage::{current_date, init_storage, save_projects};
 use chrono::{DateTime, Local};
@@ -302,6 +302,18 @@ impl ProjectDashboardApp {
                     ui.add(icon_image(themed_icon(dark, icon), 16.0));
                     ui.add_space(6.0);
                     ui.colored_label(Color32::from_rgb(2, 110, 193), text);
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if self.status_message.is_some() {
+                            let clear_button =
+                                icon_button(themed_icon(dark, IconKind::Clear), 14.0).frame(false);
+                            let clear_response = ui
+                                .add(clear_button)
+                                .on_hover_text("Clear notification");
+                            if clear_response.clicked() {
+                                self.status_message = None;
+                            }
+                        }
+                    });
                 });
             });
     }
@@ -710,6 +722,7 @@ impl ProjectDashboardApp {
                     project_type: self.create_form.project_type.storage_value().to_owned(),
                     main_path: main_path.to_owned(),
                     builds: Vec::new(),
+                    star: None,
                     status: "active".to_owned(),
                     created_on: today.clone(),
                     edited_on: today,
@@ -779,7 +792,7 @@ impl ProjectDashboardApp {
     }
 
     fn refresh_android_builds(&mut self, project_name: &str) {
-        let (project_type, main_path, existing_builds) = match self
+        let (project_type, main_path, existing_builds, existing_star) = match self
             .projects
             .iter()
             .find(|project| project.name == project_name)
@@ -788,6 +801,7 @@ impl ProjectDashboardApp {
                 ProjectType::from_storage(&project.project_type).unwrap_or(ProjectType::Android),
                 project.main_path.clone(),
                 project.builds.clone(),
+                project.star.clone(),
             ),
             None => return,
         };
@@ -803,24 +817,29 @@ impl ProjectDashboardApp {
             }
         };
 
-        let starred_path = existing_builds
-            .iter()
-            .find(|build| build.starred)
-            .map(|build| build.path.clone());
+        let mut starred_path = existing_star.clone();
+        if starred_path.is_none() {
+            starred_path = existing_builds
+                .iter()
+                .find(|build| build.starred)
+                .map(|build| build.path.clone());
+        }
         let mut builds = builds;
-        if let Some(path) = starred_path {
-            if let Some(build) = builds.iter_mut().find(|build| build.path == path) {
+        if let Some(path) = &starred_path {
+            if let Some(build) = builds.iter_mut().find(|build| build.path == *path) {
                 build.starred = true;
             }
         }
 
-        if existing_builds != builds {
+        let star_changed = starred_path != existing_star;
+        if existing_builds != builds || star_changed {
             if let Some(project) = self
                 .projects
                 .iter_mut()
                 .find(|project| project.name == project_name)
             {
                 project.builds = builds;
+                project.star = starred_path;
             }
             if let Err(err) = self.persist_projects() {
                 self.project_action_error = Some(err);
@@ -942,7 +961,10 @@ impl ProjectDashboardApp {
                 .find(|build| build.path == build_path)
             {
                 build.starred = true;
+                project.star = Some(build.path.clone());
             }
+        } else {
+            project.star = None;
         }
 
         if let Err(err) = self.persist_projects() {

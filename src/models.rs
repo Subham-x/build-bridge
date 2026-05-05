@@ -76,6 +76,8 @@ pub struct ProjectRecord {
     pub project_type: String,
     pub main_path: String,
     pub builds: Vec<BuildEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub star: Option<String>,
     pub status: String,
     pub created_on: String,
     pub edited_on: String,
