@@ -487,7 +487,7 @@ impl ProjectDashboardApp {
             .projects_file_path
             .as_ref()
             .ok_or_else(|| "Projects file path unavailable.".to_owned())?;
-        let agent_path = locate_bridge_agent()?;
+        let agent_path = locate_python_agent()?;
 
         self.serve_token = None;
         self.serve_url = None;
@@ -510,7 +510,8 @@ impl ProjectDashboardApp {
         #[cfg(target_os = "windows")]
         {
             let mut command_line = format!(
-                "python bridge_serve_python.py --projects \"{}\" --project \"{}\" --bind {} --port 8080",
+                "& \"{}\" --projects \"{}\" --project \"{}\" --bind {} --port 8080",
+                agent_path.display(),
                 projects_path.display(),
                 project.name,
                 bind_addr
@@ -520,7 +521,7 @@ impl ProjectDashboardApp {
             }
             self.open_terminal_with_command(&command_line)?;
             self.terminal_lines
-                .push("Server opened in Windows terminal (Python).".to_owned());
+                .push("Server opened in Windows terminal (EXE).".to_owned());
             return Ok(());
         }
 
@@ -1884,24 +1885,30 @@ fn is_terminal_link(token: &str) -> bool {
     token.starts_with("http://") || token.starts_with("https://")
 }
 
-fn locate_bridge_agent() -> Result<PathBuf, String> {
+fn locate_python_agent() -> Result<PathBuf, String> {
     let exe_path = std::env::current_exe().map_err(|err| err.to_string())?;
     let exe_dir = exe_path
         .parent()
         .ok_or_else(|| "Executable directory unavailable.".to_owned())?;
-    let agent_name = if cfg!(target_os = "windows") {
-        "bridge_serve_agent.exe"
-    } else {
-        "bridge_serve_agent"
-    };
+    
+    // Check for EXE in same directory as main app
+    let agent_name = "bridge_serve_python.exe";
     let agent_path = exe_dir.join(agent_name);
-    if !agent_path.exists() {
-        return Err(format!(
-            "Serve agent not found at {}",
-            agent_path.display()
-        ));
+    
+    if agent_path.exists() {
+        return Ok(agent_path);
     }
-    Ok(agent_path)
+    
+    // Fallback: check current working directory (useful for dev)
+    let cwd_path = std::env::current_dir().unwrap_or_default().join(agent_name);
+    if cwd_path.exists() {
+        return Ok(cwd_path);
+    }
+
+    Err(format!(
+        "Python bridge agent not found. Please ensure {} is in the app folder.",
+        agent_name
+    ))
 }
 
 fn generate_token() -> String {
