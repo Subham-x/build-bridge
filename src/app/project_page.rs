@@ -253,6 +253,12 @@ impl ProjectDashboardApp {
                                 );
                             } else {
                                 let mut any_menu_open = false;
+                                let any_popup_open = self.create_modal_open
+                                    || self.theme_popup_open
+                                    || self.empty_bin_confirm_open
+                                    || self.pending_project_action.is_some()
+                                    || self.terminal_link_popup_open
+                                    || self.build_location_popup_open;
                                 ScrollArea::vertical().max_height(list_height).show(ui, |ui| {
                                     for project in projects {
                                         let mut block_rects = Vec::new();
@@ -576,7 +582,7 @@ impl ProjectDashboardApp {
                                         && self.nav != super::Nav::Bin
                                         && !menu_action_clicked
                                         && !any_menu_open
-                                        && self.pending_project_action.is_none()
+                                        && !any_popup_open
                                     {
                                         self.open_project_details(&project.name);
                                     }
