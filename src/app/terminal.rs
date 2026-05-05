@@ -1,4 +1,5 @@
 use super::{is_terminal_link, ProjectDashboardApp};
+use crate::icons::{icon_button, themed_icon, IconKind};
 use eframe::egui::{
     self, Color32, FontFamily, FontId, Frame, Margin, RichText, ScrollArea, Stroke,
 };
@@ -20,8 +21,22 @@ impl ProjectDashboardApp {
             .fill(title_bg)
             .inner_margin(Margin::same(6))
             .show(ui, |ui| {
-                ui.set_min_width(ui.available_width());
-                ui.colored_label(title_text, "Terminal");
+                ui.horizontal(|ui| {
+                    ui.colored_label(title_text, "Terminal");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let open_icon = themed_icon(dark, IconKind::OpenIn);
+                        let btn = icon_button(open_icon, 14.0).frame(false);
+                        if ui.add(btn).on_hover_text("Open in System Terminal").clicked() {
+                            if let Some(project_name) = self.serve_project.clone() {
+                                if let Some(project) = self.projects.iter().find(|p| p.name == project_name) {
+                                    let _ = self.open_standalone_terminal(project);
+                                }
+                            } else {
+                                let _ = self.open_system_terminal();
+                            }
+                        }
+                    });
+                });
             });
         Frame::new()
             .fill(Color32::BLACK)

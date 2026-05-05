@@ -15,7 +15,6 @@ use eframe::egui::{
     self, Button, Color32, ComboBox, RichText, TextEdit, ThemePreference, TextureHandle,
     TopBottomPanel, Vec2,
 };
-use local_ip_address::local_ip;
 use std::collections::{BTreeSet, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -457,12 +456,6 @@ impl ProjectDashboardApp {
 
         self.terminal_lines.clear();
         self.terminal_rx = None;
-        self.terminal_lines.push(format!(
-            "PS > serve \"{}\" --mode bridge",
-            project.name
-        ));
-        self.terminal_lines
-            .push("Starting bridge agent...".to_owned());
 
         let (host_ip, alt_hosts) = resolve_lan_host();
         let bind_addr = "0.0.0.0".to_owned();
@@ -545,34 +538,60 @@ impl ProjectDashboardApp {
             return Ok(());
         }
 
-        let mut child = Command::new(&agent_path)
-            .args(args)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|err| {
-                let message = format!("Failed to launch bridge agent: {err}");
+        #[cfg(not(target_os = "windows"))]
+        {
+            let mut child = Command::new(&agent_path)
+                .args(args)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(|err| {
+                    let message = format!("Failed to launch bridge agent: {err}");
+                    self.terminal_lines.push(format!("Error: {message}"));
+                    message
+                })?;
+
+            let stdout = child.stdout.take().ok_or_else(|| {
+                let message = "Bridge agent stdout unavailable.".to_owned();
+                self.terminal_lines.push(format!("Error: {message}"));
+                message
+            })?;
+            let stderr = child.stderr.take().ok_or_else(|| {
+                let message = "Bridge agent stderr unavailable.".to_owned();
                 self.terminal_lines.push(format!("Error: {message}"));
                 message
             })?;
 
-        let stdout = child.stdout.take().ok_or_else(|| {
-            let message = "Bridge agent stdout unavailable.".to_owned();
-            self.terminal_lines.push(format!("Error: {message}"));
-            message
-        })?;
-        let stderr = child.stderr.take().ok_or_else(|| {
-            let message = "Bridge agent stderr unavailable.".to_owned();
-            self.terminal_lines.push(format!("Error: {message}"));
-            message
-        })?;
+            let (tx, rx) = mpsc::channel();
+            spawn_reader_thread(stdout, tx.clone());
+            spawn_reader_thread(stderr, tx);
+            self.terminal_rx = Some(rx);
+            self.serve_child = Some(child);
+            Ok(())
+        }
+    }
 
-        let (tx, rx) = mpsc::channel();
-        spawn_reader_thread(stdout, tx.clone());
-        spawn_reader_thread(stderr, tx);
-        self.terminal_rx = Some(rx);
-        self.serve_child = Some(child);
-        Ok(())
+    fn open_standalone_terminal(&self, project: &ProjectRecord) -> Result<(), String> {
+        let projects_path = self
+            .projects_file_path
+            .as_ref()
+            .ok_or_else(|| "Projects file path unavailable.".to_owned())?;
+        let agent_path = locate_python_agent()?;
+        let (host_ip, _) = resolve_lan_host();
+        let bind_addr = "0.0.0.0".to_owned();
+
+        let mut command_line = format!(
+            "& \"{}\" --projects \"{}\" --project \"{}\" --bind {} --port 8080",
+            agent_path.display(),
+            projects_path.display(),
+            project.name,
+            bind_addr
+        );
+        if !host_ip.is_empty() {
+            command_line.push_str(&format!(" --host {}", host_ip));
+        }
+
+        self.open_terminal_with_command(&command_line)
     }
 
     fn stop_bridge_serve(&mut self) {
@@ -1929,13 +1948,6 @@ fn locate_python_agent() -> Result<PathBuf, String> {
         "Python bridge agent not found. Please ensure '{}' is in the app folder.",
         agent_name
     ))
-}
-
-fn generate_token() -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    format!("{:x}{:x}", now.as_secs(), now.subsec_nanos())
 }
 
 fn resolve_lan_host() -> (String, Vec<Ipv4Addr>) {

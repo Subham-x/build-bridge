@@ -11,3 +11,13 @@ docs
 /target/release/*.exe
 /target/release/*.pdb
 /DemoFIles
+
+# Python Build Artifacts
+build/
+dist/
+__pycache__/
+*.spec
+!Build Stream by build Bridge.exe
+!bridge_serve_python.py
+!build_python_exe.py
+!version_info.txt

@@ -28,10 +28,13 @@ pub enum IconKind {
     Bug,
     Star,
     StarFilled,
+    OpenIn,
 }
 
 pub fn themed_icon(dark: bool, icon: IconKind) -> ImageSource<'static> {
     match (dark, icon) {
+        (true, IconKind::OpenIn) => egui::include_image!("../assets/icons/open_in_dark.svg"),
+        (false, IconKind::OpenIn) => egui::include_image!("../assets/icons/open_in_light.svg"),
         (true, IconKind::Bug) => egui::include_image!("../assets/icons/bug_dark.svg"),
         (false, IconKind::Bug) => egui::include_image!("../assets/icons/bug_light.svg"),
         (true, IconKind::Back) => egui::include_image!("../assets/icons/caret_left_dark.svg"),
