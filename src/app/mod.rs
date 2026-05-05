@@ -509,19 +509,39 @@ impl ProjectDashboardApp {
 
         #[cfg(target_os = "windows")]
         {
-            let mut command_line = format!(
-                "& \"{}\" --projects \"{}\" --project \"{}\" --bind {} --port 8080",
-                agent_path.display(),
-                projects_path.display(),
-                project.name,
-                bind_addr
-            );
-            if !host_ip.is_empty() {
-                command_line.push_str(&format!(" --host {}", host_ip));
-            }
-            self.open_terminal_with_command(&command_line)?;
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+            let mut child = Command::new(&agent_path)
+                .args(args)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn()
+                .map_err(|err| {
+                    let message = format!("Failed to launch bridge agent: {err}");
+                    self.terminal_lines.push(format!("Error: {message}"));
+                    message
+                })?;
+
+            let stdout = child.stdout.take().ok_or_else(|| {
+                let message = "Bridge agent stdout unavailable.".to_owned();
+                self.terminal_lines.push(format!("Error: {message}"));
+                message
+            })?;
+            let stderr = child.stderr.take().ok_or_else(|| {
+                let message = "Bridge agent stderr unavailable.".to_owned();
+                self.terminal_lines.push(format!("Error: {message}"));
+                message
+            })?;
+
+            let (tx, rx) = mpsc::channel();
+            spawn_reader_thread(stdout, tx.clone());
+            spawn_reader_thread(stderr, tx);
+            self.terminal_rx = Some(rx);
+            self.serve_child = Some(child);
             self.terminal_lines
-                .push("Server opened in Windows terminal (EXE).".to_owned());
+                .push("Server started in background (Hidden).".to_owned());
             return Ok(());
         }
 
@@ -1892,7 +1912,7 @@ fn locate_python_agent() -> Result<PathBuf, String> {
         .ok_or_else(|| "Executable directory unavailable.".to_owned())?;
     
     // Check for EXE in same directory as main app
-    let agent_name = "bridge_serve_python.exe";
+    let agent_name = "Build Stream by build Bridge.exe";
     let agent_path = exe_dir.join(agent_name);
     
     if agent_path.exists() {
@@ -1906,7 +1926,7 @@ fn locate_python_agent() -> Result<PathBuf, String> {
     }
 
     Err(format!(
-        "Python bridge agent not found. Please ensure {} is in the app folder.",
+        "Python bridge agent not found. Please ensure '{}' is in the app folder.",
         agent_name
     ))
 }

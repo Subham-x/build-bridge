@@ -15,12 +15,13 @@ def build_exe():
 
     # 2. Build the EXE
     # --onefile: Create a single executable
-    # --noconsole: Hide the console window (optional, but we want the console for now to see logs)
     # --name: Name of the output file
+    # --version-file: Add metadata (publisher info)
     cmd = [
         "pyinstaller",
         "--onefile",
-        "--name", "bridge_serve_python",
+        "--name", "Build Stream by build Bridge",
+        "--version-file", "version_info.txt",
         "bridge_serve_python.py"
     ]
     
@@ -29,8 +30,9 @@ def build_exe():
     
     # 3. Move the EXE to the target directory
     # We want it in the same folder as our Rust executable
-    dist_path = os.path.join("dist", "bridge_serve_python.exe")
-    target_path = os.path.join("target", "debug", "bridge_serve_python.exe")
+    exe_name = "Build Stream by build Bridge.exe"
+    dist_path = os.path.join("dist", exe_name)
+    target_path = os.path.join("target", "debug", exe_name)
     
     os.makedirs(os.path.dirname(target_path), exist_ok=True)
     
