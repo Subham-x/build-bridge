@@ -108,11 +108,10 @@ impl ProjectDashboardApp {
                         self.begin_edit_project(&project.name);
                     }
                     if ui.button("Restart").clicked() {
-                        self.status_message =
-                            Some(format!("Restart clicked for '{}'.", project.name));
+                        self.set_status_message(format!("Restart clicked for '{}'.", project.name));
                     }
                     if ui.button("Stop").clicked() {
-                        self.status_message = Some(format!("Stop clicked for '{}'.", project.name));
+                        self.set_status_message(format!("Stop clicked for '{}'.", project.name));
                     }
                 });
             });

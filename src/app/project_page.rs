@@ -155,7 +155,7 @@ impl ProjectDashboardApp {
                             let selected = self.archive_selected.clone();
                             match self.bulk_bin_projects(&selected) {
                                 Ok(count) => {
-                                    self.status_message = Some(format!("Moved {count} project(s) to Bin."));
+                                    self.set_status_message(format!("Moved {count} project(s) to Bin."));
                                     self.archive_selected.clear();
                                 }
                                 Err(err) => {
@@ -167,7 +167,7 @@ impl ProjectDashboardApp {
                             let selected = self.archive_selected.clone();
                             match self.bulk_unarchive_projects(&selected) {
                                 Ok(count) => {
-                                    self.status_message = Some(format!("Unarchived {count} project(s)."));
+                                    self.set_status_message(format!("Unarchived {count} project(s)."));
                                     self.archive_selected.clear();
                                 }
                                 Err(err) => {
@@ -199,7 +199,7 @@ impl ProjectDashboardApp {
                             let selected = self.bin_selected.clone();
                             match self.bulk_permanent_delete_projects(&selected) {
                                 Ok(count) => {
-                                    self.status_message = Some(format!(
+                                    self.set_status_message(format!(
                                         "Permanently deleted {count} project(s)."
                                     ));
                                     self.bin_selected.clear();
@@ -213,7 +213,7 @@ impl ProjectDashboardApp {
                             let selected = self.bin_selected.clone();
                             match self.bulk_restore_projects(&selected) {
                                 Ok(count) => {
-                                    self.status_message = Some(format!("Restored {count} project(s)."));
+                                    self.set_status_message(format!("Restored {count} project(s)."));
                                     self.bin_selected.clear();
                                 }
                                 Err(err) => {
@@ -512,7 +512,7 @@ impl ProjectDashboardApp {
                                                     )
                                                     .on_hover_text("Serve settings");
                                                 if serve_settings_response.clicked() {
-                                                    self.status_message = Some(format!(
+                                                    self.set_status_message(format!(
                                                         "Serve settings clicked for '{}'.",
                                                         project.name
                                                     ));
@@ -538,7 +538,7 @@ impl ProjectDashboardApp {
                                                 } else if project.status == "active" {
                                                     let serve_response = ui.add(super::brand_button("Serve"));
                                                     if serve_response.clicked() {
-                                                        self.status_message = Some(format!(
+                                                        self.set_status_message(format!(
                                                             "Serve clicked for '{}'.",
                                                             project.name
                                                         ));
@@ -702,8 +702,9 @@ impl ProjectDashboardApp {
                                                 new_tab: false,
                                             });
                                         } else {
-                                            self.status_message =
-                                                Some("Feedback folder path unavailable.".to_owned());
+                                            self.set_status_message(
+                                                "Feedback folder path unavailable.",
+                                            );
                                         }
                                     }
                                 });
@@ -731,7 +732,7 @@ impl ProjectDashboardApp {
                             ui.horizontal(|ui| {
                                 ui.label("Add file");
                                 if ui.button("+").clicked() {
-                                    self.status_message = Some(format!(
+                                    self.set_status_message(format!(
                                         "Add build clicked for '{}'.",
                                         project.name
                                     ));
@@ -751,8 +752,10 @@ impl ProjectDashboardApp {
                                         .min_size(Vec2::new(30.0, 26.0)),
                                 );
                                 if ui.add(super::brand_button("Serve")).clicked() {
-                                    self.status_message =
-                                        Some(format!("Serve clicked for '{}'.", project.name));
+                                    self.set_status_message(format!(
+                                        "Serve clicked for '{}'.",
+                                        project.name
+                                    ));
                                 }
                             });
                         });
@@ -772,7 +775,31 @@ impl ProjectDashboardApp {
                 return;
             }
 
-            ui.label(RichText::new(format!("Total Builds ({})", project.builds.len())).strong());
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(format!("Total Builds ({})", project.builds.len())).strong());
+                let refresh_button = icon_button(themed_icon(dark, IconKind::Refresh), 14.0)
+                    .frame(true)
+                    .min_size(Vec2::new(26.0, 22.0));
+                let refresh_response = ui
+                    .add(refresh_button)
+                    .on_hover_text("Refresh builds");
+                if refresh_response.clicked() {
+                    match self.refresh_android_builds_with_result(&project.name) {
+                        Ok(count) => {
+                            self.set_status_message_tinted(
+                                format!("Builds refreshed ({count})."),
+                                Color32::from_rgb(46, 160, 67),
+                            );
+                        }
+                        Err(err) => {
+                            self.set_status_message_tinted(
+                                format!("Build refresh failed: {err}"),
+                                Color32::from_rgb(220, 68, 55),
+                            );
+                        }
+                    }
+                }
+            });
             ui.add_space(6.0);
 
             ScrollArea::vertical()

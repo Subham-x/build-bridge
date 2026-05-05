@@ -91,6 +91,7 @@ pub struct ProjectDashboardApp {
     create_form: CreateProjectForm,
     form_error: Option<String>,
     status_message: Option<String>,
+    status_message_tint: Option<Color32>,
     storage_error: Option<String>,
     theme_popup_open: bool,
     theme_mode: AppThemeMode,
@@ -161,6 +162,7 @@ impl Default for ProjectDashboardApp {
             create_form: CreateProjectForm::default(),
             form_error: None,
             status_message: None,
+            status_message_tint: None,
             storage_error,
             theme_popup_open: false,
             theme_mode,
@@ -289,6 +291,21 @@ impl eframe::App for ProjectDashboardApp {
 }
 
 impl ProjectDashboardApp {
+    fn clear_status_message(&mut self) {
+        self.status_message = None;
+        self.status_message_tint = None;
+    }
+
+    fn set_status_message(&mut self, message: impl Into<String>) {
+        self.status_message = Some(message.into());
+        self.status_message_tint = None;
+    }
+
+    fn set_status_message_tinted(&mut self, message: impl Into<String>, tint: Color32) {
+        self.status_message = Some(message.into());
+        self.status_message_tint = Some(tint);
+    }
+
     fn render_status_bar(&mut self, ctx: &egui::Context, dark: bool) {
         TopBottomPanel::bottom("status_bar")
             .exact_height(24.0)
@@ -299,9 +316,15 @@ impl ProjectDashboardApp {
                     } else {
                         (IconKind::BellSlash, "No new notifications")
                     };
+                    let message_color = if self.status_message.is_some() {
+                        self.status_message_tint
+                            .unwrap_or(Color32::from_rgb(2, 110, 193))
+                    } else {
+                        Color32::from_rgb(2, 110, 193)
+                    };
                     ui.add(icon_image(themed_icon(dark, icon), 16.0));
                     ui.add_space(6.0);
-                    ui.colored_label(Color32::from_rgb(2, 110, 193), text);
+                    ui.colored_label(message_color, text);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if self.status_message.is_some() {
                             let clear_button =
@@ -310,7 +333,7 @@ impl ProjectDashboardApp {
                                 .add(clear_button)
                                 .on_hover_text("Clear notification");
                             if clear_response.clicked() {
-                                self.status_message = None;
+                                self.clear_status_message();
                             }
                         }
                     });
@@ -486,7 +509,7 @@ impl ProjectDashboardApp {
                             if ui.add(brand_button(submit_label)).clicked() {
                                 match self.create_project() {
                                     Ok(success_message) => {
-                                        self.status_message = Some(success_message);
+                                        self.set_status_message(success_message);
                                         self.form_error = None;
                                         close_modal = true;
                                     }
@@ -792,6 +815,12 @@ impl ProjectDashboardApp {
     }
 
     fn refresh_android_builds(&mut self, project_name: &str) {
+        if let Err(err) = self.refresh_android_builds_with_result(project_name) {
+            self.project_action_error = Some(err);
+        }
+    }
+
+    fn refresh_android_builds_with_result(&mut self, project_name: &str) -> Result<usize, String> {
         let (project_type, main_path, existing_builds, existing_star) = match self
             .projects
             .iter()
@@ -803,19 +832,14 @@ impl ProjectDashboardApp {
                 project.builds.clone(),
                 project.star.clone(),
             ),
-            None => return,
+            None => return Err(format!("Project '{project_name}' not found.")),
         };
         if project_type != ProjectType::Android {
-            return;
+            return Ok(existing_builds.len());
         }
 
-        let builds = match self.detect_android_apk_builds(Path::new(&main_path)) {
-            Ok(builds) => builds,
-            Err(err) => {
-                self.project_action_error = Some(err);
-                return;
-            }
-        };
+        let builds = self.detect_android_apk_builds(Path::new(&main_path))?;
+        let build_count = builds.len();
 
         let mut starred_path = existing_star.clone();
         if starred_path.is_none() {
@@ -842,9 +866,10 @@ impl ProjectDashboardApp {
                 project.star = starred_path;
             }
             if let Err(err) = self.persist_projects() {
-                self.project_action_error = Some(err);
+                return Err(err);
             }
         }
+        Ok(build_count)
     }
 
     fn detect_android_apk_builds(&self, project_root: &Path) -> Result<Vec<BuildEntry>, String> {
@@ -1004,7 +1029,7 @@ impl ProjectDashboardApp {
         project.status = "archived".to_owned();
         project.edited_on = current_date();
         self.persist_projects()?;
-        self.status_message = Some(format!("Project '{project_name}' archived."));
+        self.set_status_message(format!("Project '{project_name}' archived."));
         Ok(())
     }
 
@@ -1017,7 +1042,7 @@ impl ProjectDashboardApp {
         project.status = "active".to_owned();
         project.edited_on = current_date();
         self.persist_projects()?;
-        self.status_message = Some(format!("Project '{project_name}' unarchived."));
+        self.set_status_message(format!("Project '{project_name}' unarchived."));
         Ok(())
     }
 
@@ -1030,7 +1055,7 @@ impl ProjectDashboardApp {
         project.status = "deleted".to_owned();
         project.edited_on = current_date();
         self.persist_projects()?;
-        self.status_message = Some(format!("Project '{project_name}' moved to Bin."));
+        self.set_status_message(format!("Project '{project_name}' moved to Bin."));
         Ok(())
     }
 
@@ -1043,7 +1068,7 @@ impl ProjectDashboardApp {
         project.status = "active".to_owned();
         project.edited_on = current_date();
         self.persist_projects()?;
-        self.status_message = Some(format!("Project '{project_name}' restored from Bin."));
+        self.set_status_message(format!("Project '{project_name}' restored from Bin."));
         Ok(())
     }
 
@@ -1054,7 +1079,7 @@ impl ProjectDashboardApp {
             return Err(format!("Project '{project_name}' not found."));
         }
         self.persist_projects()?;
-        self.status_message = Some(format!(
+        self.set_status_message(format!(
             "Project '{project_name}' permanently deleted."
         ));
         Ok(())
@@ -1138,11 +1163,11 @@ impl ProjectDashboardApp {
         self.projects.retain(|project| project.status != "deleted");
         let removed = before.saturating_sub(self.projects.len());
         if removed == 0 {
-            self.status_message = Some("Bin is already empty.".to_owned());
+            self.set_status_message("Bin is already empty.".to_owned());
             return Ok(());
         }
         self.persist_projects()?;
-        self.status_message = Some(format!("Removed {removed} project(s) from Bin."));
+        self.set_status_message(format!("Removed {removed} project(s) from Bin."));
         Ok(())
     }
 
