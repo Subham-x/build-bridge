@@ -10,3 +10,4 @@ docs
 /target
 /target/release/*.exe
 /target/release/*.pdb
+/DemoFIles
