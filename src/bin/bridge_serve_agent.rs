@@ -1,7 +1,9 @@
+#![windows_subsystem = "windows"]
+
 use serde::Deserialize;
 use std::env;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use tiny_http::{Header, Method, Response, Server, StatusCode};
 
@@ -89,8 +91,8 @@ fn main() {
             let _ = request.respond(response);
             continue;
         }
-        let url = request.url();
-        let path = split_url(url);
+        let url = request.url().to_owned();
+        let path = split_url(&url);
 
         if path == "/" {
             let _ = request.respond(with_cors(serve_index(&site_dir)));
@@ -266,7 +268,7 @@ fn split_url(url: &str) -> &str {
     url.split_once('?').map(|(path, _)| path).unwrap_or(url)
 }
 
-fn with_cors<T>(response: Response<T>) -> Response<T> {
+fn with_cors<T: std::io::Read>(response: Response<T>) -> Response<T> {
     response
         .with_header(cors_header("Access-Control-Allow-Origin", "*"))
         .with_header(cors_header(
@@ -286,17 +288,23 @@ fn cors_header(name: &str, value: &str) -> Header {
     })
 }
 
-fn serve_index(site_dir: &Path) -> Response<fs::File> {
+fn serve_index(site_dir: &Path) -> Response<Box<dyn std::io::Read + Send>> {
     let index_path = site_dir.join("index.html");
     if let Ok(file) = fs::File::open(&index_path) {
-        Response::from_file(file)
-            .with_header(Header::from_bytes("Content-Type", "text/html").unwrap())
+        let boxed: Box<dyn std::io::Read + Send> = Box::new(file);
+        Response::new(
+            StatusCode(200),
+            vec![Header::from_bytes("Content-Type", "text/html").unwrap()],
+            boxed,
+            None,
+            None,
+        )
     } else {
-        Response::from_string("Index not found").with_status_code(StatusCode(404))
+        Response::from_string("Index not found").with_status_code(StatusCode(404)).boxed()
     }
 }
 
-fn serve_file(site_dir: &Path, file_name: &str) -> Response<fs::File> {
+fn serve_file(site_dir: &Path, file_name: &str) -> Response<Box<dyn std::io::Read + Send>> {
     let safe_name = sanitize_segment(file_name);
     let file_path = site_dir.join("files").join(safe_name);
     if let Ok(file) = fs::File::open(&file_path) {
@@ -305,9 +313,15 @@ fn serve_file(site_dir: &Path, file_name: &str) -> Response<fs::File> {
         } else {
             "application/octet-stream"
         };
-        Response::from_file(file)
-            .with_header(Header::from_bytes("Content-Type", content_type).unwrap())
+        let boxed: Box<dyn std::io::Read + Send> = Box::new(file);
+        Response::new(
+            StatusCode(200),
+            vec![Header::from_bytes("Content-Type", content_type).unwrap()],
+            boxed,
+            None,
+            None,
+        )
     } else {
-        Response::from_string("File not found").with_status_code(StatusCode(404))
+        Response::from_string("File not found").with_status_code(StatusCode(404)).boxed()
     }
 }

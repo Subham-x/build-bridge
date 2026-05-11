@@ -30,6 +30,7 @@ def build_exe():
     cmd = [
         "pyinstaller",
         "--onefile",
+        "--noconsole",
         "--name", "Build Stream by build Bridge",
         "--version-file", version_file,
         "--icon", icon_file,

@@ -61,6 +61,11 @@ def get_time_ago(timestamp):
     return f"{int(seconds // 86400)} days ago"
 
 class BridgeHandler(http.server.SimpleHTTPRequestHandler):
+    # In portable/no-console builds, stdout/stderr can be invalid on Windows.
+    # Disable request logging to avoid Errno 22 crashes.
+    def log_message(self, format, *args):
+        return
+
     def end_headers(self):
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
@@ -170,6 +175,14 @@ class BridgeHandler(http.server.SimpleHTTPRequestHandler):
         else:
             super().do_GET()
 
+class SafeTCPServer(socketserver.TCPServer):
+    # Prevent Errno 22 crashes when stderr/stdout are invalid in portable builds.
+    def handle_error(self, request, client_address):
+        try:
+            super().handle_error(request, client_address)
+        except OSError:
+            pass
+
 def main():
     global PROJECTS_FILE, PROJECT_NAME, PORT, BIND
     
@@ -217,7 +230,7 @@ def main():
     sys.stdout.flush()
 
     socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer((BIND, PORT), BridgeHandler) as httpd:
+    with SafeTCPServer((BIND, PORT), BridgeHandler) as httpd:
         httpd.serve_forever()
 
 if __name__ == "__main__":

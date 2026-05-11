@@ -41,3 +41,6 @@ server/version_info.txt
 .DS_Store
 Thumbs.db
 *.log
+
+BuildBridge_Portable
+BuildBridge_Portable.zip

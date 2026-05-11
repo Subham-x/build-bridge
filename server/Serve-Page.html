@@ -342,12 +342,12 @@
       z-index: 1;
     }
     ::view-transition-new(root) {
-      animation: wipe-down 400ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      animation: wipe-down 700ms cubic-bezier(0.64, 0, 0.35, 1) forwards;
       z-index: 2;
     }
     @keyframes wipe-down {
-      from { clip-path: inset(0 0 100% 0); }
-      to { clip-path: inset(0 0 0 0); }
+      from { clip-path: inset(0 0 100% 0 round 0 0 120px 120px); }
+      to { clip-path: inset(0 0 0 0 round 0 0 0px 0px); }
     }
 
     @keyframes statusGlow {
