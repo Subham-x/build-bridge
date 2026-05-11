@@ -593,7 +593,13 @@ impl ProjectDashboardApp {
         let agent_path = locate_python_agent()?;
 
         self.serve_token = None;
-        self.serve_url = None;
+        self.serve_url = if host_ip.is_empty() {
+            None
+        } else {
+            Some(format!("http://{}:8080/", host_ip))
+        };
+        self.bridge_qr_texture = None;
+        self.bridge_qr_url = None;
 
         let mut args = vec![
             "--projects".to_owned(),
@@ -2069,11 +2075,22 @@ fn locate_python_agent() -> Result<PathBuf, String> {
 fn resolve_lan_host() -> (String, Vec<Ipv4Addr>) {
     let mut candidates = list_lan_ipv4();
 
-    // Prioritize the IP that is actually used to reach the internet.
-    if let Ok(active_ip) = detect_local_ipv4() {
-        if !active_ip.is_loopback() && !active_ip.is_unspecified() {
-            candidates.retain(|ip| *ip != active_ip);
-            return (active_ip.to_string(), candidates);
+    // Prefer the OS-reported local IP (fast, no outbound probe).
+    if let Ok(local_ip) = local_ip_address::local_ip() {
+        if let IpAddr::V4(v4) = local_ip {
+            if !v4.is_loopback() && !v4.is_unspecified() {
+                candidates.retain(|ip| *ip != v4);
+                return (v4.to_string(), candidates);
+            }
+        }
+    }
+
+    // Only probe for an active route if no interfaces were detected.
+    if candidates.is_empty() {
+        if let Ok(active_ip) = detect_local_ipv4() {
+            if !active_ip.is_loopback() && !active_ip.is_unspecified() {
+                return (active_ip.to_string(), Vec::new());
+            }
         }
     }
 

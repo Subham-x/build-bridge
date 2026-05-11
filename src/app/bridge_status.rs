@@ -2,7 +2,7 @@ use super::ProjectDashboardApp;
 use crate::models::ProjectRecord;
 use crate::icons::{icon_button, themed_icon, IconKind};
 use eframe::egui::{
-    self, Align, Align2, Color32, ColorImage, FontFamily, FontId, Layout, RichText, Vec2,
+    self, Align, Color32, ColorImage, FontFamily, FontId, Layout, RichText, Vec2,
 };
 use qrcode::{Color, QrCode};
 
@@ -45,6 +45,20 @@ impl ProjectDashboardApp {
 
         if !self.bridge_status_expanded {
             return;
+        }
+
+        if let Some(url) = self.active_serve_url(&project.name) {
+            let needs_refresh = self.bridge_qr_texture.is_none()
+                || self.bridge_qr_url.as_deref() != Some(url.as_str());
+            if needs_refresh {
+                let image = build_qr_image(&url, QR_SCALE, QR_OUTLINE_PX);
+                self.bridge_qr_texture = Some(ui.ctx().load_texture(
+                    "bridge_qr",
+                    image,
+                    egui::TextureOptions::LINEAR,
+                ));
+                self.bridge_qr_url = Some(url);
+            }
         }
 
         ui.add_space(4.0);
