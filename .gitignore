@@ -22,10 +22,12 @@ __pycache__/
 *.egg-info/
 *.egg
 .Python
-!Build Stream by build Bridge.exe
-!bridge_serve_python.py
+!server/Build Stream by build Bridge.exe
+!server/bridge_serve_python.py
+!server/Serve-Page.html
+!server/version_info.txt
+!server/icon.ico
 !build_python_exe.py
-!version_info.txt
 
 # IDE and Editor
 .vscode/

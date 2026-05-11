@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+
+<!-- APP_LINKS -->
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<!-- Font Imports -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<title>Build Bridge - Mobile Interface</title>
+<!-- Tailwind CSS CDN with plugins -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Nunito"', 'sans-serif'],
+            // Explicitly assigned to the Build Bridge title only
+            title: ['"Google Sans Flex"', '"Google Sans"', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              // Light mode from Code-Light.html
+              bg: '#FFFFFF',
+              text: '#111827',
+              muted: '#6B7280',
+              accent: '#2563EB',
+              card: '#626262',
+              // Dark mode from original Main.html
+              darkBg: '#1a1a1a',
+              darkCard: '#262626',
+              darkAccent: '#89CFF0',
+              darkSecondary: '#60a5fa',
+              darkMuted: '#9ca3af'
+            }
+          },
+          backdropBlur: {
+            xs: '2px',
+          }
+        }
+      }
+    }
+  </script>
+  <script>
+    // Immediate Theme Initialization to prevent flash
+    (function() {
+      function getCookie(name) {
+        let matches = document.cookie.match(new RegExp("(?:^|; )" + name.replace(/([\.$?*|{}\(\)\[\]\\\/\+^])/g, '\\$1') + "=([^;]*)"));
+        return matches ? decodeURIComponent(matches[1]) : undefined;
+      }
+      const theme = getCookie('build-bridge-android-THEME') || 'system';
+      const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (theme === 'dark' || (theme === 'system' && isSystemDark)) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    })();
+  </script>
+<!-- BEGIN: Custom Styles -->
+<style data-purpose="glass-effects">
+    .frosted-glass {
+      background-color: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    }
+
+    .dark .frosted-glass {
+      background-color: rgba(26, 26, 26, 0.7);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.2);
+    }
+
+    .liquid-glass {
+      background: rgba(229, 231, 235, 0.6);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+    }
+
+    .dark .liquid-glass {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8), inset 0 0 10px rgba(255, 255, 255, 0.05);
+    }
+
+    /* Subtle gloss effect for the bottom dock */
+    .liquid-glass::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 50%;
+      background: linear-gradient(to bottom, rgba(255,255,255,0.3), transparent);
+      border-radius: 9999px 9999px 0 0;
+      pointer-events: none;
+    }
+
+    .dark .liquid-glass::after {
+      background: linear-gradient(to bottom, rgba(255,255,255,0.05), transparent);
+    }
+
+    /* Switcher Dock Variables */
+    :root {
+      --c-glass: #bbbbbc;
+      --c-light: #fff;
+      --c-dark: #000;
+      --c-content: #111827;
+      --c-action: #2563EB;
+      --glass-reflex-dark: 1;
+      --glass-reflex-light: 1;
+      --saturation: 150%;
+    }
+
+    .dark {
+      --c-glass: #505050;
+      --c-light: #fff;
+      --c-dark: #000;
+      --c-content: #e1e1e1;
+      --c-action: #89CFF0;
+      --glass-reflex-dark: 2;
+      --glass-reflex-light: 0.3;
+      --saturation: 150%;
+    }
+
+    /* Dock Shared Glass Styles */
+    .dock-glass {
+      background-color: color-mix(in srgb, var(--c-glass) 12%, transparent);
+      backdrop-filter: blur(12px) saturate(var(--saturation));
+      -webkit-backdrop-filter: blur(12px) saturate(var(--saturation));
+      
+      box-shadow: 
+        inset 0 0 0 1px color-mix(in srgb, var(--c-light) calc(var(--glass-reflex-light) * 10%), transparent),
+        inset 1.8px 3px 0px -2px color-mix(in srgb, var(--c-light) calc(var(--glass-reflex-light) * 90%), transparent),
+        inset -2px -2px 0px -2px color-mix(in srgb, var(--c-light) calc(var(--glass-reflex-light) * 80%), transparent),
+        inset -3px -8px 1px -6px color-mix(in srgb, var(--c-light) calc(var(--glass-reflex-light) * 60%), transparent),
+        inset -0.3px -1px 4px 0px color-mix(in srgb, var(--c-dark) calc(var(--glass-reflex-dark) * 12%), transparent),
+        inset -1.5px 2.5px 0px -2px color-mix(in srgb, var(--c-dark) calc(var(--glass-reflex-dark) * 20%), transparent),
+        inset 0px 3px 4px -2px color-mix(in srgb, var(--c-dark) calc(var(--glass-reflex-dark) * 20%), transparent),
+        inset 2px -6.5px 1px -4px color-mix(in srgb, var(--c-dark) calc(var(--glass-reflex-dark) * 10%), transparent),
+        0px 1px 5px 0px color-mix(in srgb, var(--c-dark) calc(var(--glass-reflex-dark) * 10%), transparent),
+        0px 6px 16px 0px color-mix(in srgb, var(--c-dark) calc(var(--glass-reflex-dark) * 8%), transparent);
+      
+      will-change: backdrop-filter;
+    }
+
+    /* Switcher Dock Styles */
+    .switcher {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: max-content;
+      height: 70px;
+      box-sizing: border-box;
+      padding: 8px 12px 10px;
+      margin: 0;
+      border: none;
+      border-radius: 99em;
+    }
+
+    .dock-action-btn {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 70px;
+      height: 70px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      color: var(--c-content);
+      transition: all 500ms ease-in-out;
+    }
+
+    .dock-action-btn:hover {
+      color: var(--c-action);
+      border-radius: 42% 58% 52% 48% / 54% 45% 55% 46%;
+    }
+    .dock-action-btn:active {
+      scale: 0.9;
+      border-radius: 58% 42% 48% 52% / 46% 55% 45% 54%;
+    }
+
+    .switcher__legend, .switcher__input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      border: 0;
+      padding: 0;
+      white-space: nowrap;
+      clip-path: inset(100%);
+      clip: rect(0 0 0 0);
+      overflow: hidden;
+    }
+
+    .switcher__icon {
+      display: block;
+      width: 24px;
+      height: 24px;
+      transition: scale 200ms cubic-bezier(0.5, 0, 0, 1);
+    }
+
+    .switcher__filter {
+      position: absolute;
+      width: 0;
+      height: 0;
+      z-index: -1;
+    }
+
+    .switcher__option {
+      --c: var(--c-content);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 0 16px;
+      width: 68px;
+      height: 100%;
+      box-sizing: border-box;
+      border-radius: 99em;
+      opacity: 1;
+      transition: all 160ms;
+      margin: 0;
+      cursor: pointer;
+    }
+
+    .switcher__option:hover {
+      --c: var(--c-action);
+    }
+
+    .switcher__option:hover .switcher__icon {
+      scale: 1.2;
+    }
+
+    .switcher__option:has(input:checked) {
+      --c: var(--c-content);
+      cursor: auto;
+    }
+
+    .switcher__option:has(input:checked) .switcher__icon {
+      scale: 1;
+    }
+
+    .switcher::after {
+      content: "";
+      position: absolute;
+      left: 12px;
+      top: 8px;
+      display: block;
+      width: 68px;
+      height: calc(100% - 18px);
+      border-radius: 99em;
+      background-color: color-mix(in srgb, var(--c-glass) 36%, transparent);
+      z-index: -1;
+      box-shadow: 
+        inset 0 0 0 1px color-mix(in srgb, var(--c-light) calc(var(--glass-reflex-light) * 10%), transparent),
+        inset 2px 1px 0px -1px color-mix(in srgb, var(--c-light) calc(var(--glass-reflex-light) * 90%), transparent),
+        inset -1.5px -1px 0px -1px color-mix(in srgb, var(--c-light) calc(var(--glass-reflex-light) * 80%), transparent),
+        inset -2px -6px 1px -5px color-mix(in srgb, var(--c-light) calc(var(--glass-reflex-light) * 60%), transparent),
+        inset -1px 2px 3px -1px color-mix(in srgb, var(--c-dark) calc(var(--glass-reflex-dark) * 20%), transparent),
+        inset 0px -4px 1px -2px color-mix(in srgb, var(--c-dark) calc(var(--glass-reflex-dark) * 10%), transparent),
+        0px 3px 6px 0px color-mix(in srgb, var(--c-dark) calc(var(--glass-reflex-dark) * 8%), transparent);
+    }
+
+    .switcher:has(input[c-option="1"]:checked)::after {
+      translate: 0 0;
+      transform-origin: right;
+      transition: background-color 400ms cubic-bezier(1, 0, 0.4, 1), box-shadow 400ms cubic-bezier(1, 0, 0.4, 1), translate 400ms cubic-bezier(1, 0, 0.4, 1);
+      animation: scaleToggle 440ms ease;
+    }
+
+    .switcher:has(input[c-option="2"]:checked)::after {
+      translate: 76px 0;
+      transform-origin: left;
+      transition: background-color 400ms cubic-bezier(1, 0, 0.4, 1), box-shadow 400ms cubic-bezier(1, 0, 0.4, 1), translate 400ms cubic-bezier(1, 0, 0.4, 1);
+      animation: scaleToggle2 440ms ease;
+    }
+
+    .switcher[c-previous="1"]:has(input[c-option="2"]:checked)::after { transform-origin: left; }
+    .switcher[c-previous="2"]:has(input[c-option="1"]:checked)::after { transform-origin: right; }
+
+    @keyframes scaleToggle { 0% { scale: 1 1; } 50% { scale: 1.1 1; } 100% { scale: 1 1; } }
+    @keyframes scaleToggle2 { 0% { scale: 1 1; } 50% { scale: 1.1 1; } 100% { scale: 1 1; } }
+
+    /* Button Bubble Effect */
+    .btn-bubble {
+      transition: all 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+      box-shadow: 
+        0 3px 8px rgba(0, 0, 0, 0.1),
+        inset 0 1.5px 1px rgba(255, 255, 255, 0.3),
+        inset 0 -1.5px 2px rgba(0, 0, 0, 0.15);
+    }
+    .btn-bubble:hover {
+      filter: brightness(0.85);
+      box-shadow: 
+        0 6px 12px rgba(0, 0, 0, 0.15),
+        inset 0 1.5px 1px rgba(255, 255, 255, 0.3),
+        inset 0 -1.5px 2px rgba(0, 0, 0, 0.15);
+    }
+    .btn-bubble:active {
+      scale: 0.85;
+      filter: brightness(0.7);
+      box-shadow: 
+        0 1px 2px rgba(0, 0, 0, 0.2),
+        inset 0 2px 4px rgba(0, 0, 0, 0.2),
+        inset 0 -1.5px 1px rgba(255, 255, 255, 0.2);
+    }
+
+    /* Dark Mode Enhanced Glass */
+    html.dark .btn-bubble {
+      box-shadow: 
+        0 4px 8px rgba(0, 0, 0, 0.4),
+        inset 0 1.5px 1.5px rgba(255, 255, 255, 0.6),
+        inset 0 -1.5px 3px rgba(0, 0, 0, 0.5);
+    }
+    html.dark .btn-bubble:hover {
+      box-shadow: 
+        0 6px 12px rgba(0, 0, 0, 0.5),
+        inset 0 1.5px 1.5px rgba(255, 255, 255, 0.6),
+        inset 0 -1.5px 3px rgba(0, 0, 0, 0.5);
+    }
+    html.dark .btn-bubble:active {
+      box-shadow: 
+        0 1px 2px rgba(0, 0, 0, 0.6),
+        inset 0 2px 5px rgba(0, 0, 0, 0.7),
+        inset 0 -1.5px 1px rgba(255, 255, 255, 0.5);
+    }
+
+    /* Theme View Transition Wipe */
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+      mix-blend-mode: normal;
+    }
+    ::view-transition-old(root) {
+      animation: none;
+      z-index: 1;
+    }
+    ::view-transition-new(root) {
+      animation: wipe-down 400ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      z-index: 2;
+    }
+    @keyframes wipe-down {
+      from { clip-path: inset(0 0 100% 0); }
+      to { clip-path: inset(0 0 0 0); }
+    }
+
+    @keyframes statusGlow {
+      0% { box-shadow: 0 0 4px currentColor; }
+      50% { box-shadow: 0 0 12px currentColor, 0 0 4px currentColor; }
+      100% { box-shadow: 0 0 4px currentColor; }
+    }
+    .animate-status-glow {
+      animation: statusGlow 2s infinite ease-in-out;
+    }
+  </style>
+  <style data-purpose="typography">
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    
+    body {
+      font-family: 'Inter', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      letter-spacing: -0.011em;
+      background: linear-gradient(to bottom, #D4DEFF 0%, #F2FFF9 100%);
+      background-attachment: fixed;
+    }
+
+    html.dark body {
+      background: linear-gradient(to bottom, #2d3a4b 0%, #0d121c 100%);
+      background-attachment: fixed;
+    }
+
+    .mono-text {
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: -0.05em;
+    }
+
+    .icon-box {
+      background: linear-gradient(135deg, #797878 0%, #515151 100%);
+      border-radius: 0 !important;
+      -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32,0 C7.2,0 0,7.2 0,32 C0,56.8 7.2,64 32,64 C56.8,64 64,56.8 64,32 C64,7.2 56.8,0 32,0 Z'/%3E%3C/svg%3E");
+      mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32,0 C7.2,0 0,7.2 0,32 C0,56.8 7.2,64 32,64 C56.8,64 64,56.8 64,32 C64,7.2 56.8,0 32,0 Z'/%3E%3C/svg%3E");
+      -webkit-mask-size: 100% 100%;
+      mask-size: 100% 100%;
+      filter: drop-shadow(0 4px 6px rgba(0,0,0,0.15));
+      position: relative;
+    }
+
+    .icon-box::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32,1 C8,1 1,8 1,32 C1,56 8,63 32,63 C56,63 63,56 63,32 C63,8 56,1 32,1 Z' fill='none' stroke='white' stroke-width='2' stroke-opacity='0.2'/%3E%3C/svg%3E");
+      pointer-events: none;
+    }
+
+    .dark .icon-box {
+      background: linear-gradient(135deg, #FFFFFF 0%, #A4A4A4 100%);
+      filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2));
+    }
+
+    .dark .icon-box::after {
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M32,1 C8,1 1,8 1,32 C1,56 8,63 32,63 C56,63 63,56 63,32 C63,8 56,1 32,1 Z' fill='none' stroke='white' stroke-width='3' stroke-opacity='0.6'/%3E%3C/svg%3E");
+    }
+  </style>
+<!-- END: Custom Styles -->
+</head>
+<body class="font-sans text-brand-text dark:text-white min-h-screen flex flex-col antialiased overflow-x-hidden">
+<!-- BEGIN: MainHeader -->
+<header class="fixed top-0 left-0 right-0 z-50 h-16 flex items-center justify-between px-6 transition-all duration-300" data-purpose="navigation-bar">
+<!-- Menu Icon (Animated to X) -->
+<button class="flex flex-col justify-center items-center gap-1.5 w-10 h-10 rounded-full hover:bg-black/5 dark:hover:bg-white/10 active:scale-90 transition-all cursor-pointer z-50" data-purpose="menu-toggle" id="menuToggleBtn">
+  <div class="w-5 h-[3px] bg-brand-accent dark:bg-brand-darkAccent rounded-full transition-all duration-300 transform origin-center" id="menuLine1"></div>
+  <div class="w-5 h-[3px] bg-brand-accent dark:bg-brand-darkAccent rounded-full transition-all duration-300 transform origin-center" id="menuLine2"></div>
+</button>
+<!-- Title -->
+<h1 class="font-title text-xl font-bold tracking-tight text-gray-800 dark:text-white">Build Bridge</h1>
+<!-- Right side items (Status & Theme) -->
+<div class="flex items-center gap-1">
+  <!-- Header Status Indicator -->
+  <div class="relative group cursor-pointer flex items-center justify-center p-2" tabindex="0">
+    <div id="headerStatusDot" class="w-2.5 h-2.5 rounded-full bg-current text-red-500 animate-status-glow transition-colors duration-300"></div>
+    <!-- Tooltip -->
+    <div class="absolute top-full mt-3 right-0 bg-gray-800 dark:bg-white text-white dark:text-gray-900 text-[10px] uppercase font-bold py-1.5 px-3 rounded shadow-lg opacity-0 pointer-events-none group-hover:opacity-100 group-focus:opacity-100 transition-all duration-200 transform translate-y-1 group-hover:translate-y-0 group-focus:translate-y-0 whitespace-nowrap z-50">
+      <span id="headerStatusTooltip">Server Offline</span>
+      <!-- Triangle pointer -->
+      <div class="absolute -top-1 right-2.5 w-2 h-2 bg-gray-800 dark:bg-white transform rotate-45"></div>
+    </div>
+  </div>
+
+  <!-- Theme Toggle (Sun/Moon Icons) -->
+  <button class="relative w-10 h-10 flex items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors overflow-hidden" data-purpose="theme-toggle">
+    <!-- Sun Icon -->
+    <svg class="absolute h-6 w-6 transition-all duration-500 transform rotate-0 scale-100 dark:-rotate-90 dark:scale-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+    </svg>
+    <!-- Moon Icon -->
+    <svg class="absolute h-6 w-6 transition-all duration-500 transform rotate-90 scale-0 dark:rotate-0 dark:scale-100" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+    </svg>
+  </button>
+</div>
+</header>
+<!-- END: MainHeader -->
+
+<!-- BEGIN: Dropdown Menu -->
+<div id="mobileMenu" class="fixed inset-0 frosted-glass z-40 transform -translate-y-full transition-transform duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] pt-20 px-6 flex flex-col overflow-y-auto">
+  
+  <!-- 1. Menu Links -->
+  <div class="flex flex-col gap-3 shrink-0 mt-2">
+    <a id="linkPrivacy" href="#" class="flex items-center gap-4 text-lg font-bold tracking-tight text-gray-800 dark:text-white hover:text-brand-accent dark:hover:text-brand-darkAccent transition-colors">
+      <div class="p-2 rounded-xl bg-black/5 dark:bg-white/10">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+      </div>
+      Privacy Policy
+    </a>
+    
+    <a id="linkSecurity" href="#" class="flex items-center gap-4 text-lg font-bold tracking-tight text-gray-800 dark:text-white hover:text-brand-accent dark:hover:text-brand-darkAccent transition-colors">
+      <div class="p-2 rounded-xl bg-black/5 dark:bg-white/10">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+      </div>
+      Security Notice
+    </a>
+    
+    <a id="linkFeedback" href="#" class="flex items-center gap-4 text-lg font-bold tracking-tight text-gray-800 dark:text-white hover:text-brand-accent dark:hover:text-brand-darkAccent transition-colors">
+      <div class="p-2 rounded-xl bg-black/5 dark:bg-white/10">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+      </div>
+      Feedback
+    </a>
+  </div>
+
+  <!-- 2. Warning Box -->
+  <div class="mt-6 p-5 rounded-2xl bg-gray-100 dark:bg-[#111] border border-gray-300 dark:border-white/10 shadow-sm shrink-0">
+    <div class="flex items-center gap-3 mb-3">
+      <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+      <h4 class="text-gray-800 dark:text-white font-bold text-sm tracking-wide">Warning</h4>
+    </div>
+    <ul class="text-gray-600 dark:text-gray-400 text-xs leading-relaxed font-medium list-disc list-outside ml-4 space-y-1.5">
+      <li>This site contains APKs/AABs/scripts that may be <span class="bg-gray-800 text-white dark:bg-gray-200 dark:text-gray-900 px-1 py-0.5 rounded font-bold shadow-sm">harmful</span>.</li>
+      <li>Download only if you trust the source.</li>
+      <li>Build Bridge is not the provider of these files.</li>
+      <li>Proceed at <span class="bg-gray-800 text-white dark:bg-gray-200 dark:text-gray-900 px-1 py-0.5 rounded font-bold shadow-sm">your own risk</span>.</li>
+    </ul>
+    <div class="mt-4 border-t border-gray-200 dark:border-white/10 pt-3">
+      <a href="#" class="linkSecurity text-brand-accent dark:text-brand-darkAccent hover:underline font-bold text-xs flex items-center gap-1 w-fit">
+        Learn More
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+      </a>
+    </div>
+  </div>
+
+  <!-- 3. Server Status and Reload Server -->
+  <div class="flex flex-col items-center gap-5 mt-auto pt-8 mb-[70px] shrink-0">
+    <!-- Server Status Indicator -->
+    <div class="flex items-center gap-2">
+      <!-- Default is Red, Python server will turn it Green by changing 'text-red-500' to 'text-green-500' -->
+      <div id="serverStatusDot" class="w-2.5 h-2.5 rounded-full bg-current text-red-500 animate-status-glow transition-colors duration-300"></div>
+      <span id="serverStatusText" class="text-xs font-bold tracking-widest uppercase text-gray-500 dark:text-gray-400 transition-colors duration-300">Server Offline</span>
+    </div>
+    
+    <button class="dock-glass group text-brand-text dark:text-white font-bold text-sm px-8 py-3 rounded-full active:scale-95 transition-all flex items-center gap-2" onclick="setTimeout(() => location.reload(), 500)">
+      <svg class="w-4 h-4 transition-transform duration-500 group-active:-rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+      Reload Server
+    </button>
+  </div>
+</div>
+<!-- END: Dropdown Menu -->
+<!-- BEGIN: BuildListContent -->
+<div id="mainContentArea" class="flex-grow relative w-full overflow-x-hidden">
+  <div id="pageSlider" class="flex w-[200vw] transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] transform translate-x-0">
+    <!-- Home Page -->
+    <main id="homePage" class="w-screen pt-20 pb-32 px-4 shrink-0 transition-opacity duration-500 opacity-100 relative" data-purpose="scrollable-content">
+      <div class="space-y-6 max-w-lg mx-auto" id="buildListContainer">
+<!-- BUILD_LIST_PLACEHOLDER -->
+      </div>
+      </div>
+    </main>
+
+    <!-- Upload Page -->
+    <main id="uploadPage" class="w-screen pt-20 pb-32 px-4 shrink-0 transition-opacity duration-500 opacity-0 h-0 overflow-hidden" data-purpose="upload-content">
+      <div class="max-w-lg mx-auto flex flex-col items-center justify-center pt-10">
+        <div class="mb-8 w-full">
+          <h1 class="text-3xl font-extrabold text-gray-900 dark:text-white mb-2">Upload Files</h1>
+          <p class="text-gray-500 dark:text-gray-400 text-sm">Select files to serve instantly.</p>
+        </div>
+        
+        <div class="relative group w-full">
+          <input type="file" id="fileUploadInput" multiple accept="image/*, audio/*, video/*, .apk, .aab, .pdf, .md, .txt, .html, .css" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+          <div class="border-2 border-dashed border-brand-accent/40 dark:border-brand-darkAccent/40 rounded-3xl p-10 flex flex-col items-center justify-center gap-4 bg-white/50 dark:bg-[#111]/50 backdrop-blur-sm group-hover:bg-brand-accent/5 dark:group-hover:bg-brand-darkAccent/5 transition-colors duration-300">
+            <div class="w-16 h-16 rounded-full bg-brand-accent/10 dark:bg-brand-darkAccent/10 flex items-center justify-center text-brand-accent dark:text-brand-darkAccent group-hover:scale-110 transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]">
+              <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+            </div>
+            <div class="text-center">
+              <p class="text-gray-800 dark:text-white font-bold text-lg">Tap to Select Files</p>
+              <p class="text-gray-500 dark:text-gray-400 text-xs mt-1">Images, Audio, Video, APK, AAB, PDF, MD, TXT, HTML, CSS</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Upload Action Button (Sticky) -->
+        <button id="startUploadBtn" class="sticky top-[88px] z-40 w-full mt-8 bg-white/40 dark:bg-white/5 backdrop-blur-2xl border border-white/60 dark:border-white/10 shadow-[inset_0_2px_10px_rgba(255,255,255,0.6),_0_8px_30px_rgba(0,0,0,0.08)] dark:shadow-[inset_0_2px_10px_rgba(255,255,255,0.1),_0_8px_30px_rgba(0,0,0,0.6)] group text-brand-text dark:text-white font-bold text-lg px-8 py-4 rounded-2xl active:scale-95 transition-all flex items-center justify-center gap-2 hidden">
+          Upload
+          <svg class="w-5 h-5 transition-transform duration-500 group-hover:-translate-y-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+        </button>
+
+        <!-- Selected Files Preview List -->
+        <div id="uploadPreviewList" class="mt-8 w-full space-y-3 relative z-10 pb-8">
+          <!-- Items will be injected here via JS -->
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<!-- END: BuildListContent -->
+<!-- BEGIN: BottomDockStatus -->
+<div id="bottomDock" class="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 transition-all duration-700 ease-[cubic-bezier(0.34,1.56,0.64,1)] transform translate-y-0 opacity-100" data-purpose="status-bar">
+  <fieldset class="switcher dock-glass"> 
+    <legend class="switcher__legend">Navigation</legend> 
+    
+    <!-- Home Mode -->
+    <label class="switcher__option"> 
+      <input class="switcher__input" type="radio" name="nav" value="home" c-option="1" data-was-checked="true" checked /> 
+      <svg class="switcher__icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"> 
+        <path stroke="var(--c)" d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+        <polyline stroke="var(--c)" points="9 22 9 12 15 12 15 22"></polyline>
+      </svg> 
+    </label> 
+
+    <!-- Upload Mode -->
+    <label class="switcher__option"> 
+      <input class="switcher__input" type="radio" name="nav" value="upload" c-option="2" /> 
+      <svg class="switcher__icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path stroke="var(--c)" d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+        <polyline stroke="var(--c)" points="17 8 12 3 7 8"></polyline>
+        <line stroke="var(--c)" x1="12" y1="3" x2="12" y2="15"></line>
+      </svg> 
+    </label> 
+  </fieldset>
+  
+  <button class="dock-action-btn dock-glass group" onclick="setTimeout(() => location.reload(), 500)" aria-label="Reload">
+    <svg class="w-6 h-6 transition-transform duration-500 group-active:-rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+    </svg>
+  </button>
+</div>
+<!-- END: BottomDockStatus -->
+<!-- BEGIN: Interactive Logic -->
+<!-- BEGIN: Disclaimer Popup -->
+<div id="disclaimerDialog" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm opacity-0 pointer-events-none transition-opacity duration-300">
+  <div class="bg-white dark:bg-[#111] border border-gray-200 dark:border-white/10 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden transform scale-95 transition-transform duration-300 flex flex-col" id="disclaimerCard">
+    <div class="p-6 pb-4 border-b border-gray-100 dark:border-white/5 flex items-center gap-3 bg-red-50/50 dark:bg-red-950/20">
+      <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+      <h3 class="text-lg font-bold text-gray-900 dark:text-white">Warning</h3>
+    </div>
+    <div class="p-6">
+      <ul class="text-gray-600 dark:text-gray-400 text-sm leading-relaxed list-disc list-outside ml-4 space-y-3">
+        <li>This page may contain <span class="text-black dark:text-white font-semibold">APKs, AABs, scripts, or other executable</span> files that can be <span class="bg-gray-800 text-white dark:bg-gray-200 dark:text-gray-900 px-1 py-0.5 rounded font-bold shadow-sm">harmful</span> to your device or data.</li>
+        <li>Download and use files only if you trust the source and <span class="text-black dark:text-white font-semibold">understand the risks involved</span>.</li>
+        <li><span class="text-black dark:text-white font-semibold">"Build Bridge"</span> does not own, host, verify, modify, or provide these files.</li>
+        <li>Any installation, usage, damage, data loss, or security issue is entirely at <span class="bg-gray-800 text-white dark:bg-gray-200 dark:text-gray-900 px-1 py-0.5 rounded font-bold shadow-sm">your own risk</span>.</li>
+      </ul>
+      <div class="mt-5 border-t border-gray-100 dark:border-white/5 pt-4">
+        <a href="#" class="linkSecurity text-brand-accent dark:text-brand-darkAccent hover:underline font-bold text-sm flex items-center gap-1 w-fit">
+          Learn More
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+        </a>
+      </div>
+    </div>
+    <div class="p-4 px-6 border-t border-gray-100 dark:border-white/5 flex items-center justify-end gap-3 bg-gray-50 dark:bg-black/50">
+      <button id="disclaimerExitBtn" class="px-5 py-2.5 rounded-xl text-gray-600 dark:text-gray-400 font-bold text-sm hover:bg-gray-200 dark:hover:bg-white/10 active:scale-95 transition-all">Exit</button>
+      <button id="disclaimerAcceptBtn" class="px-5 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-bold text-sm shadow-md active:scale-95 transition-all">I, Understand</button>
+    </div>
+  </div>
+</div>
+<!-- END: Disclaimer Popup -->
+<script data-purpose="ui-interactivity">
+    // ==========================================
+    // CONFIGURATION AREA
+    // Edit these URLs to update the menu links
+    // ==========================================
+    const APP_LINKS = {
+      privacyPolicy: "https://example.com/privacy",
+      securityNotice: "https://example.com/security",
+      feedback: "https://example.com/feedback"
+    };
+
+    // Apply links on load
+    const applyLink = (id, url) => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.setAttribute('href', url);
+        el.setAttribute('target', '_blank');
+      }
+    };
+    
+    applyLink('linkPrivacy', APP_LINKS.privacyPolicy);
+    applyLink('linkSecurity', APP_LINKS.securityNotice);
+    applyLink('linkFeedback', APP_LINKS.feedback);
+    
+    // Apply to all Learn More warnings
+    document.querySelectorAll('.linkSecurity').forEach(el => {
+      el.setAttribute('href', APP_LINKS.securityNotice);
+      el.setAttribute('target', '_blank');
+    });
+    // ==========================================
+
+    // Menu Toggle Logic
+    const menuToggleBtn = document.getElementById('menuToggleBtn');
+    const mobileMenu = document.getElementById('mobileMenu');
+    const bottomDock = document.getElementById('bottomDock');
+    const menuLine1 = document.getElementById('menuLine1');
+    const menuLine2 = document.getElementById('menuLine2');
+    
+    let isMenuOpen = false;
+    if (menuToggleBtn && mobileMenu) {
+      menuToggleBtn.addEventListener('click', () => {
+        isMenuOpen = !isMenuOpen;
+        if (isMenuOpen) {
+          mobileMenu.classList.remove('-translate-y-full');
+          mobileMenu.classList.add('translate-y-0');
+          if (menuLine1 && menuLine2) {
+            menuLine1.classList.add('translate-y-[4.5px]', 'rotate-45');
+            menuLine2.classList.add('-translate-y-[4.5px]', '-rotate-45');
+          }
+          if (bottomDock) {
+            bottomDock.classList.add('translate-y-32', 'opacity-0', 'pointer-events-none');
+            bottomDock.classList.remove('translate-y-0', 'opacity-100');
+          }
+        } else {
+          mobileMenu.classList.add('-translate-y-full');
+          mobileMenu.classList.remove('translate-y-0');
+          if (menuLine1 && menuLine2) {
+            menuLine1.classList.remove('translate-y-[4.5px]', 'rotate-45');
+            menuLine2.classList.remove('-translate-y-[4.5px]', '-rotate-45');
+          }
+          if (bottomDock) {
+            bottomDock.classList.remove('translate-y-32', 'opacity-0', 'pointer-events-none');
+            bottomDock.classList.add('translate-y-0', 'opacity-100');
+          }
+        }
+      });
+    }
+
+    // Switcher Logic for Home/Upload Navigation
+    const navInputs = document.querySelectorAll('input[name="nav"]');
+    const pageSlider = document.getElementById('pageSlider');
+    const homePage = document.getElementById('homePage');
+    const uploadPage = document.getElementById('uploadPage');
+
+    navInputs.forEach(input => {
+      input.addEventListener('change', (e) => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        
+        if (e.target.value === 'upload') {
+          // Slide to Upload
+          pageSlider.style.transform = 'translateX(-100vw)';
+          
+          // Manage heights and opacity for scroll
+          uploadPage.classList.remove('h-0', 'overflow-hidden', 'opacity-0');
+          uploadPage.classList.add('opacity-100');
+          
+          // Wait for slide to finish before collapsing home
+          setTimeout(() => {
+            if (document.querySelector('input[name="nav"]:checked').value === 'upload') {
+              homePage.classList.add('h-0', 'overflow-hidden');
+              homePage.classList.remove('opacity-100');
+            }
+          }, 500);
+        } else {
+          // Slide to Home
+          pageSlider.style.transform = 'translateX(0)';
+          
+          homePage.classList.remove('h-0', 'overflow-hidden', 'opacity-0');
+          homePage.classList.add('opacity-100');
+          
+          // Wait for slide to finish before collapsing upload
+          setTimeout(() => {
+            if (document.querySelector('input[name="nav"]:checked').value === 'home') {
+              uploadPage.classList.add('h-0', 'overflow-hidden');
+              uploadPage.classList.remove('opacity-100');
+            }
+          }, 500);
+        }
+      });
+    });
+
+    // File Upload Preview Logic
+    const fileUploadInput = document.getElementById('fileUploadInput');
+    const uploadPreviewList = document.getElementById('uploadPreviewList');
+    const startUploadBtn = document.getElementById('startUploadBtn');
+
+    function showToast(message) {
+      const toast = document.createElement('div');
+      toast.className = 'fixed top-4 left-1/2 -translate-x-1/2 w-[90%] max-w-sm text-center leading-relaxed bg-red-500 text-white px-6 py-4 rounded-2xl shadow-2xl z-[200] font-bold text-sm transform transition-all duration-500 -translate-y-[150%] opacity-0 pointer-events-none';
+      toast.innerText = message;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.classList.remove('-translate-y-[150%]', 'opacity-0');
+        toast.classList.add('translate-y-0', 'opacity-100');
+      }, 10);
+      setTimeout(() => {
+        toast.classList.remove('translate-y-0', 'opacity-100');
+        toast.classList.add('-translate-y-[150%]', 'opacity-0');
+        setTimeout(() => toast.remove(), 500);
+      }, 4000);
+    }
+
+    const isValidFile = (file) => {
+      if (file.type.startsWith('image/') || file.type.startsWith('audio/') || file.type.startsWith('video/')) return true;
+      const extMatch = file.name.match(/\.([^.]+)$/);
+      if (!extMatch) return false;
+      const ext = extMatch[1].toLowerCase();
+      const allowedExts = ['apk', 'aab', 'pdf', 'md', 'txt', 'html', 'css'];
+      return allowedExts.includes(ext);
+    };
+
+    if (fileUploadInput) {
+      fileUploadInput.addEventListener('change', (e) => {
+        uploadPreviewList.innerHTML = '';
+        let hasInvalid = false;
+        const dt = new DataTransfer();
+        
+        if (e.target.files.length > 0) {
+          startUploadBtn.classList.remove('hidden');
+          Array.from(e.target.files).forEach(file => {
+            const isValid = isValidFile(file);
+            if (!isValid) {
+              hasInvalid = true;
+            } else {
+              dt.items.add(file);
+            }
+            
+            const div = document.createElement('div');
+            const borderClass = isValid ? 'border-black/5 dark:border-white/5 bg-black/5 dark:bg-white/5' : 'border-red-500/50 bg-red-500/10';
+            const iconColor = isValid ? 'text-brand-accent dark:text-brand-darkAccent bg-brand-accent/10 dark:bg-brand-darkAccent/10' : 'text-red-500 bg-red-500/20';
+            const textColor = isValid ? 'dark:text-white text-gray-800' : 'text-red-500';
+            
+            div.className = `p-4 rounded-2xl border flex items-center justify-between ${borderClass}`;
+            div.innerHTML = `
+              <div class="flex items-center gap-3 overflow-hidden">
+                <div class="p-2 rounded-lg shrink-0 ${iconColor}">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                </div>
+                <div class="flex flex-col truncate">
+                  <span class="text-sm font-bold truncate ${textColor}">${file.name}</span>
+                  ${!isValid ? '<span class="text-xs text-red-500 font-medium mt-0.5">Unsupported format</span>' : ''}
+                </div>
+              </div>
+              <span class="text-xs font-medium text-gray-500 shrink-0 ml-4">${(file.size / 1024 / 1024).toFixed(2)} MB</span>
+            `;
+            uploadPreviewList.appendChild(div);
+          });
+          
+          fileUploadInput.files = dt.files;
+          
+          if (hasInvalid) {
+            showToast("Some file formats are not supported/allowed.");
+          }
+          
+          if (dt.files.length === 0) {
+            startUploadBtn.classList.add('hidden');
+          }
+        } else {
+          startUploadBtn.classList.add('hidden');
+        }
+      });
+    }
+
+    // Theme Toggle Logic
+    const themeToggle = document.querySelector('[data-purpose="theme-toggle"]');
+    
+    function setCookie(name, value, days = 365) {
+      let date = new Date();
+      date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+      document.cookie = name + "=" + value + "; expires=" + date.toUTCString() + "; path=/";
+    }
+
+    function getCookie(name) {
+      let matches = document.cookie.match(new RegExp("(?:^|; )" + name.replace(/([\.$?*|{}\(\)\[\]\\\/\+^])/g, '\\$1') + "=([^;]*)"));
+      return matches ? decodeURIComponent(matches[1]) : undefined;
+    }
+
+    // Disclaimer Dialog Logic
+    const disclaimerDialog = document.getElementById('disclaimerDialog');
+    const disclaimerCard = document.getElementById('disclaimerCard');
+    const disclaimerAcceptBtn = document.getElementById('disclaimerAcceptBtn');
+    const disclaimerExitBtn = document.getElementById('disclaimerExitBtn');
+    
+    if (disclaimerDialog && getCookie('build-bridge-android-DISCLAIMER-acceptyed') !== 'true') {
+      setTimeout(() => {
+        disclaimerDialog.classList.remove('opacity-0', 'pointer-events-none');
+        disclaimerCard.classList.remove('scale-95');
+        disclaimerCard.classList.add('scale-100');
+      }, 300);
+      
+      document.body.style.overflow = 'hidden';
+      
+      disclaimerAcceptBtn.addEventListener('click', () => {
+        setCookie('build-bridge-android-DISCLAIMER-acceptyed', 'true');
+        disclaimerDialog.classList.add('opacity-0', 'pointer-events-none');
+        disclaimerCard.classList.remove('scale-100');
+        disclaimerCard.classList.add('scale-95');
+        document.body.style.overflow = '';
+      });
+      
+      disclaimerExitBtn.addEventListener('click', () => {
+        location.href = 'about:blank';
+      });
+    }
+
+    if (themeToggle) {
+      themeToggle.addEventListener('click', () => {
+        const toggleTheme = () => {
+          document.documentElement.classList.toggle('dark');
+          const isDark = document.documentElement.classList.contains('dark');
+          setCookie('build-bridge-android-THEME', isDark ? 'dark' : 'light');
+        };
+
+        if (!document.startViewTransition) {
+          toggleTheme();
+          return;
+        }
+
+        document.startViewTransition(() => {
+          toggleTheme();
+        });
+      });
+    }
+
+    // Listen to system theme changes if on 'system' mode
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+      let matches = document.cookie.match(new RegExp("(?:^|; )build-bridge-android-THEME=([^;]*)"));
+      const currentCookieTheme = matches ? decodeURIComponent(matches[1]) : 'system';
+      
+      if (currentCookieTheme === 'system') {
+        if (e.matches) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      }
+    });
+
+    // Restart Button Logic
+    const restartBtn = document.querySelector('[data-purpose="restart-item"]');
+    if (restartBtn) {
+      restartBtn.addEventListener('click', () => {
+        // Simple reload for now, simulating a restart
+        location.reload();
+      });
+    }
+
+    // Simple click handlers for visual feedback
+    document.querySelectorAll('[data-purpose="download-btn"]').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const originalText = this.textContent;
+        this.textContent = '...';
+        this.classList.add('opacity-70');
+        setTimeout(() => {
+          this.textContent = originalText;
+          this.classList.remove('opacity-70');
+        }, 1500);
+      });
+    });
+
+    // Handle scroll shadow for header
+    const handleScroll = () => {
+      const header = document.querySelector('header');
+      if (window.scrollY > 10) {
+        header.classList.add('shadow-xl', 'frosted-glass');
+      } else {
+        header.classList.remove('shadow-xl', 'frosted-glass');
+      }
+    };
+    window.addEventListener('scroll', handleScroll);
+    handleScroll(); // Trigger on load
+
+    // Dock Navigation Animation Logic
+    const dockSwitcher = document.querySelector('.switcher');
+    const dockInputs = document.querySelectorAll('.switcher__input');
+
+    if (dockSwitcher && dockInputs) {
+      dockInputs.forEach(input => {
+        input.addEventListener('change', (e) => {
+          const previouslyChecked = document.querySelector('.switcher__input[data-was-checked="true"]');
+          if (previouslyChecked) {
+            dockSwitcher.setAttribute('c-previous', previouslyChecked.getAttribute('c-option'));
+            previouslyChecked.removeAttribute('data-was-checked');
+          }
+          e.target.setAttribute('data-was-checked', 'true');
+        });
+      });
+    }
+  </script>
+<!-- END: Interactive Logic -->
+</body></html>

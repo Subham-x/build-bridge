@@ -1957,18 +1957,17 @@ fn locate_python_agent() -> Result<PathBuf, String> {
     
     // Check for EXE in same directory as main app
     let agent_name = "Build Stream by build Bridge.exe";
-    let agent_path = exe_dir.join(agent_name);
-    
+    let agent_path = exe_dir.join("server").join(agent_name);
+
     if agent_path.exists() {
         return Ok(agent_path);
     }
-    
+
     // Fallback: check current working directory (useful for dev)
-    let cwd_path = std::env::current_dir().unwrap_or_default().join(agent_name);
+    let cwd_path = std::env::current_dir().unwrap_or_default().join("server").join(agent_name);
     if cwd_path.exists() {
         return Ok(cwd_path);
     }
-
     Err(format!(
         "Python bridge agent not found. Please ensure '{}' is in the app folder.",
         agent_name
