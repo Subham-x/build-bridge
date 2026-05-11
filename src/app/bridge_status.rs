@@ -84,8 +84,18 @@ impl ProjectDashboardApp {
                     if let Some(url) = self.serve_url.as_ref() {
                         ui.scope(|ui| {
                             ui.visuals_mut().button_frame = false;
-                            let btn_text = RichText::new(url).font(detail_font.clone()).color(Color32::LIGHT_BLUE);
-                            ui.menu_button(btn_text, |ui| {
+                            
+                            let hover_id = ui.id().with("link_hover");
+                            let is_hovered: bool = ui.data_mut(|d| d.get_temp(hover_id).unwrap_or(false));
+                            
+                            let mut btn_text = RichText::new(url).font(detail_font.clone());
+                            if is_hovered {
+                                btn_text = btn_text.color(Color32::LIGHT_BLUE).underline();
+                            } else {
+                                btn_text = btn_text.color(value_color);
+                            }
+
+                            let response = ui.menu_button(btn_text, |ui| {
                                 if ui.button("Open").clicked() {
                                     ui.ctx().open_url(egui::OpenUrl::new_tab(url));
                                     ui.close();
@@ -94,7 +104,9 @@ impl ProjectDashboardApp {
                                     ui.ctx().copy_text(url.clone());
                                     ui.close();
                                 }
-                            });
+                            }).response;
+                            
+                            ui.data_mut(|d| d.insert_temp(hover_id, response.hovered()));
                         });
                     } else {
                         ui.label(RichText::new("---").font(detail_font.clone()).color(value_color));

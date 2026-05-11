@@ -491,22 +491,37 @@ impl ProjectDashboardApp {
         // Generate QR code
         match qrcode::QrCode::new(&clean_url) {
             Ok(code) => {
+                let scale = 16;
+                let outline_px = 40;
                 let width = code.width();
                 let colors = code.to_colors();
-                let mut pixels = vec![egui::Color32::WHITE; width * width];
-                
-                for (i, color) in colors.into_iter().enumerate() {
-                    if color == qrcode::Color::Dark {
-                        pixels[i] = egui::Color32::BLACK;
+                let size = width * scale + outline_px * 2;
+                let mut pixels = vec![egui::Color32::WHITE; size * size];
+
+                for y in 0..width {
+                    for x in 0..width {
+                        let idx = y * width + x;
+                        let color = if colors[idx] == qrcode::Color::Dark {
+                            egui::Color32::BLACK
+                        } else {
+                            egui::Color32::WHITE
+                        };
+                        for dy in 0..scale {
+                            for dx in 0..scale {
+                                let px = outline_px + x * scale + dx;
+                                let py = outline_px + y * scale + dy;
+                                pixels[py * size + px] = color;
+                            }
+                        }
                     }
                 }
-                
-                let color_image = egui::ColorImage::new([width, width], pixels);
+
+                let color_image = egui::ColorImage::new([size, size], pixels);
                 
                 self.bridge_qr_texture = Some(ctx.load_texture(
                     "bridge_qr",
                     color_image,
-                    egui::TextureOptions::default(),
+                    egui::TextureOptions::LINEAR,
                 ));
                 self.bridge_qr_url = Some(clean_url);
             }
