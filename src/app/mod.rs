@@ -319,7 +319,7 @@ impl eframe::App for ProjectDashboardApp {
         }
 
         self.maybe_refresh_realtime_builds();
-        self.poll_terminal_output();
+        self.poll_terminal_output(ctx);
 
         let dark = ctx.style().visuals.dark_mode;
 
@@ -416,35 +416,103 @@ impl ProjectDashboardApp {
         self.status_message_tint = Some(tint);
     }
 
-    fn poll_terminal_output(&mut self) {
+    fn poll_terminal_output(&mut self, ctx: &egui::Context) {
+        // 1. Try to read status from JSON file (Most Robust)
+        if self.serve_url.is_none() && self.serve_child.is_some() {
+            if let Some(appdata) = std::env::var_os("APPDATA") {
+                let status_file = std::path::Path::new(&appdata)
+                    .join("BuildBridge")
+                    .join("BuildBridge")
+                    .join("data")
+                    .join("bridge.json");
+                if status_file.exists() {
+                    if let Ok(content) = std::fs::read_to_string(&status_file) {
+                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                            if let Some(url) = val["url"].as_str() {
+                                self.update_serve_url(ctx, url);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         let Some(rx) = self.terminal_rx.as_ref() else {
             return;
         };
 
+        let mut should_restart = false;
+        let mut detected_urls = Vec::new();
         while let Ok(line) = rx.try_recv() {
             let trimmed = line.trim();
             
-            // Capture the actual LAN IP from the Python agent output
-            if let Some(url) = trimmed.strip_prefix("LAN IP: ") {
-                self.serve_url = Some(url.trim().to_owned());
-            } else if let Some(url) = trimmed.strip_prefix("Listening on ") {
-                // Fallback to Listening on if LAN IP hasn't been captured yet
+            // Capture the actual LAN IP from the Python agent output (Backup)
+            let mut detected_url = None;
+            if let Some(idx) = trimmed.find("[[SERVER_URL]]=") {
+                detected_url = Some(trimmed[idx + "[[SERVER_URL]]=".len()..].to_owned());
+            } else if let Some(idx) = trimmed.find("SERVER_URL: ") {
+                detected_url = Some(trimmed[idx + "SERVER_URL: ".len()..].to_owned());
+            } else if let Some(idx) = trimmed.find("LAN IP: ") {
                 if self.serve_url.is_none() {
-                    let url_trimmed = url.trim();
-                    let mut resolved = url_trimmed.to_owned();
-                    if (url_trimmed.starts_with("http://127.0.0.1")
-                        || url_trimmed.starts_with("http://0.0.0.0"))
-                        && self.serve_host.is_some()
-                    {
-                        if let Some(host) = self.serve_host.as_ref() {
-                            resolved = format!("http://{host}:8080/");
-                        }
-                    }
-                    self.serve_url = Some(resolved);
+                    detected_url = Some(trimmed[idx + "LAN IP: ".len()..].to_owned());
                 }
+            }
+
+            if let Some(clean_url) = detected_url {
+                detected_urls.push(clean_url);
+            } else if trimmed == "RESTART_SIGNAL" || trimmed.contains("RESTART_SIGNAL") {
+                should_restart = true;
             }
             
             self.terminal_lines.push(line);
+        }
+
+        for url in detected_urls {
+            self.update_serve_url(ctx, &url);
+        }
+
+        if should_restart {
+            if let Some(project_name) = self.serve_project.clone() {
+                if let Some(project) = self.projects.iter().find(|p| p.name == project_name).cloned() {
+                    let _ = self.start_bridge_serve(&project);
+                }
+            }
+        }
+    }
+
+    fn update_serve_url(&mut self, ctx: &egui::Context, url: &str) {
+        let clean_url = url.trim().to_owned();
+        if self.serve_url.as_deref() == Some(&clean_url) {
+            return;
+        }
+        
+        self.serve_url = Some(clean_url.clone());
+        
+        // Generate QR code
+        match qrcode::QrCode::new(&clean_url) {
+            Ok(code) => {
+                let width = code.width();
+                let colors = code.to_colors();
+                let mut pixels = vec![egui::Color32::WHITE; width * width];
+                
+                for (i, color) in colors.into_iter().enumerate() {
+                    if color == qrcode::Color::Dark {
+                        pixels[i] = egui::Color32::BLACK;
+                    }
+                }
+                
+                let color_image = egui::ColorImage::new([width, width], pixels);
+                
+                self.bridge_qr_texture = Some(ctx.load_texture(
+                    "bridge_qr",
+                    color_image,
+                    egui::TextureOptions::default(),
+                ));
+                self.bridge_qr_url = Some(clean_url);
+            }
+            Err(err) => {
+                self.terminal_lines.push(format!("QR Error: {err}"));
+            }
         }
     }
 
@@ -633,6 +701,15 @@ impl ProjectDashboardApp {
         self.bridge_qr_texture = None;
         self.bridge_qr_url = None;
         self.terminal_lines.push("Bridge stopped".to_owned());
+        
+        if let Some(appdata) = std::env::var_os("APPDATA") {
+            let status_file = std::path::Path::new(&appdata)
+                .join("BuildBridge")
+                .join("BuildBridge")
+                .join("data")
+                .join("bridge.json");
+            let _ = std::fs::remove_file(status_file);
+        }
     }
 
     fn render_status_bar(&mut self, ctx: &egui::Context, dark: bool) {
@@ -1668,13 +1745,13 @@ impl ProjectDashboardApp {
         Ok(())
     }
 
-        fn persist_projects(&self) -> Result<(), String> {
+    fn persist_projects(&self) -> Result<(), String> {
         let path = self
             .projects_file_path
             .as_ref()
             .ok_or_else(|| "Cannot determine config directory for Projects.json".to_owned())?;
         save_projects(path, &self.projects)
-        }
+    }
 
     fn persist_preferences(&self) -> Result<(), String> {
         let path = self
@@ -1703,7 +1780,7 @@ impl ProjectDashboardApp {
             ui.add_space(8.0);
             ui.label(format!("Config file: {}", config_path.display()));
         }
-        }
+    }
 
     fn open_config_folder(&self) -> Result<(), String> {
         if let Some(path) = &self.app_config_file_path {

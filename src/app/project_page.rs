@@ -1083,7 +1083,7 @@ impl ProjectDashboardApp {
             });
             ui.add_space(6.0);
             ScrollArea::vertical()
-                .id_source("extra_added_scroll")
+                .id_salt("extra_added_scroll")
                 .max_height(80.0)
                 .show(ui, |ui| {
                 if let Some(extra_path) = &project.added_file {

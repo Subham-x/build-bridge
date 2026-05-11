@@ -72,6 +72,22 @@ class BridgeHandler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        if self.path == "/restart":
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"Restarting...")
+            print("RESTART_SIGNAL")
+            sys.stdout.flush()
+            
+            def kill_later():
+                import time
+                time.sleep(1)
+                os._exit(0)
+            
+            threading.Thread(target=kill_later).start()
+            return
+
         # Serve the index page or files
         if self.path == "/":
             self.send_response(200)
@@ -173,10 +189,32 @@ def main():
         sys.exit(1)
 
     ip = get_local_ip()
+    server_url = f"http://{ip}:{PORT}/"
+    
+    # Write status to JSON file for robust communication with Rust
+    try:
+        appdata_path = os.getenv('APPDATA')
+        if appdata_path:
+            status_dir = os.path.join(appdata_path, "BuildBridge", "BuildBridge", "data")
+            os.makedirs(status_dir, exist_ok=True)
+            status_file = os.path.join(status_dir, "bridge.json")
+        else:
+            status_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bridge_status.json")
+
+        with open(status_file, "w") as f:
+            json.dump({
+                "url": server_url,
+                "pid": os.getpid(),
+                "time": datetime.now().isoformat()
+            }, f)
+    except Exception as e:
+        print(f"Error writing status file: {e}")
+
     print(f"Bridge status: connected")
     print(f"Listening on http://{BIND}:{PORT}")
-    print(f"LAN IP: http://{ip}:{PORT}")
-    print(f"SERVER_URL: http://{ip}:{PORT}") # Explicit tag for Rust to parse
+    print(f"LAN IP: {server_url}")
+    print(f"[[SERVER_URL]]={server_url}") # Marker for Rust to parse
+    sys.stdout.flush()
 
     socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer((BIND, PORT), BridgeHandler) as httpd:

@@ -28,6 +28,7 @@ __pycache__/
 !server/version_info.txt
 !server/icon.ico
 !build_python_exe.py
+server/version_info.txt
 
 # IDE and Editor
 .vscode/

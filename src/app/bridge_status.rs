@@ -61,6 +61,12 @@ impl ProjectDashboardApp {
                 Color32::from_gray(90)
             };
 
+            // QR Code display on the left
+            if let Some(texture) = &self.bridge_qr_texture {
+                ui.image((texture.id(), Vec2::new(96.0, 96.0)));
+                ui.add_space(16.0);
+            }
+
             ui.vertical(|ui| {
                 let is_online = self.is_bridge_online(&project.name);
                 let status_text = if is_online { "Online" } else { "Offline" };
@@ -68,18 +74,31 @@ impl ProjectDashboardApp {
                 // Status Row
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Status .").font(detail_font.clone()).color(label_color));
-                    ui.label(RichText::new(status_text).font(detail_font.clone()).color(value_color));
+                    let color = if is_online { Color32::GREEN } else { Color32::from_rgb(255, 0, 79) };
+                    ui.label(RichText::new(status_text).font(detail_font.clone()).color(color));
                 });
 
                 // Link Row
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Link   .").font(detail_font.clone()).color(label_color));
-                    let link_text = if let Some(url) = self.serve_url.as_ref() {
-                        url
+                    if let Some(url) = self.serve_url.as_ref() {
+                        ui.scope(|ui| {
+                            ui.visuals_mut().button_frame = false;
+                            let btn_text = RichText::new(url).font(detail_font.clone()).color(Color32::LIGHT_BLUE);
+                            ui.menu_button(btn_text, |ui| {
+                                if ui.button("Open").clicked() {
+                                    ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+                                    ui.close();
+                                }
+                                if ui.button("Copy").clicked() {
+                                    ui.ctx().copy_text(url.clone());
+                                    ui.close();
+                                }
+                            });
+                        });
                     } else {
-                        "8080"
-                    };
-                    ui.label(RichText::new(link_text).font(detail_font.clone()).color(value_color));
+                        ui.label(RichText::new("---").font(detail_font.clone()).color(value_color));
+                    }
                 });
 
                 // Type Row
@@ -95,14 +114,21 @@ impl ProjectDashboardApp {
                         self.close_project_details();
                         self.begin_edit_project(&project.name);
                     }
-                    if ui.button("Restart").clicked() {
-                        self.stop_bridge_serve();
-                        if let Err(err) = self.start_bridge_serve(project) {
-                            self.project_action_error = Some(err);
+                    
+                    let is_online = self.is_bridge_online(&project.name);
+                    if is_online {
+                        if ui.button("Restart").clicked() {
+                            let _ = self.start_bridge_serve(project);
                         }
-                    }
-                    if ui.button("Stop").clicked() {
-                        self.stop_bridge_serve();
+                        if ui.button("Stop").clicked() {
+                            self.stop_bridge_serve();
+                        }
+                    } else {
+                        if ui.button("Start").clicked() {
+                            if let Err(err) = self.start_bridge_serve(project) {
+                                self.project_action_error = Some(err);
+                            }
+                        }
                     }
                 });
             });
