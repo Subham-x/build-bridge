@@ -199,6 +199,9 @@ pub struct ProjectDashboardApp {
     serve_project: Option<String>,
     bridge_qr_texture: Option<TextureHandle>,
     bridge_qr_url: Option<String>,
+    show_close_confirmation: bool,
+    pending_serve_project: Option<ProjectRecord>,
+    is_shutting_down: bool,
 }
 
 impl Default for ProjectDashboardApp {
@@ -287,6 +290,9 @@ impl Default for ProjectDashboardApp {
             serve_project: None,
             bridge_qr_texture: None,
             bridge_qr_url: None,
+            show_close_confirmation: false,
+            pending_serve_project: None,
+            is_shutting_down: false,
         }
     }
 }
@@ -299,6 +305,15 @@ impl eframe::App for ProjectDashboardApp {
         }
 
         ctx.set_theme(self.theme_mode.to_pref());
+
+        if ctx.input(|i| i.viewport().close_requested()) {
+            if self.serve_child.is_some() && !self.is_shutting_down {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                self.show_close_confirmation = true;
+            } else {
+                self.stop_bridge_serve();
+            }
+        }
 
         if self.create_modal_open && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.create_modal_open = false;
@@ -348,6 +363,8 @@ impl eframe::App for ProjectDashboardApp {
         self.render_project_action_confirm(ctx);
         self.render_build_location_popup(ctx);
         self.render_project_path_popup(ctx);
+        self.render_close_confirmation(ctx);
+        self.render_switch_serve_confirm(ctx);
 
         if let Some(err) = self.app_config_error.clone() {
             self.render_error_toast(ctx, &err);
@@ -562,6 +579,14 @@ impl ProjectDashboardApp {
             return Ok(());
         }
 
+        // Check if another project is already being served
+        if let Some(active_name) = &self.serve_project {
+            if active_name != &project.name && self.serve_child.is_some() {
+                self.pending_serve_project = Some(project.clone());
+                return Ok(());
+            }
+        }
+
         self.stop_bridge_serve();
 
         self.terminal_lines.clear();
@@ -712,6 +737,17 @@ impl ProjectDashboardApp {
 
     fn stop_bridge_serve(&mut self) {
         if let Some(mut child) = self.serve_child.take() {
+            #[cfg(target_os = "windows")]
+            {
+                let pid = child.id();
+                // /F = Force, /T = Tree (including children)
+                let _ = Command::new("taskkill")
+                    .args(["/F", "/T", "/PID", &pid.to_string()])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .and_then(|mut c| c.wait());
+            }
             let _ = child.kill();
         }
         self.terminal_rx = None;
@@ -1932,6 +1968,78 @@ impl ProjectDashboardApp {
             _ => "",
         };
         ui.heading(body);
+    }
+
+    fn render_close_confirmation(&mut self, ctx: &egui::Context) {
+        if !self.show_close_confirmation {
+            return;
+        }
+
+        let mut open = self.show_close_confirmation;
+        let mut should_close = false;
+        egui::Window::new("Exit Application")
+            .collapsible(false)
+            .resizable(false)
+            .open(&mut open)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .default_size(Vec2::new(380.0, 120.0))
+            .show(ctx, |ui| {
+                ui.label("A server is currently active. Do you want to stop the server and close the app?");
+                ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    if ui.add(brand_button("Yes, Stop & Exit")).clicked() {
+                        should_close = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        self.show_close_confirmation = false;
+                    }
+                });
+            });
+
+        if should_close {
+            self.stop_bridge_serve();
+            self.is_shutting_down = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+        self.show_close_confirmation = open;
+    }
+
+    fn render_switch_serve_confirm(&mut self, ctx: &egui::Context) {
+        let pending_project = match self.pending_serve_project.clone() {
+            Some(p) => p,
+            None => return,
+        };
+
+        let mut open = true;
+        let mut should_switch = false;
+        egui::Window::new("Switch Server")
+            .collapsible(false)
+            .resizable(false)
+            .open(&mut open)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .default_size(Vec2::new(400.0, 130.0))
+            .show(ctx, |ui| {
+                let active_name = self.serve_project.as_deref().unwrap_or("another project");
+                ui.label(format!("'{}' is currently being served. Starting a new server for '{}' will stop the active one.", active_name, pending_project.name));
+                ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    if ui.add(brand_button("Stop & Serve")).clicked() {
+                        should_switch = true;
+                    }
+                    if ui.button("Cancel Operation").clicked() {
+                        self.pending_serve_project = None;
+                    }
+                });
+            });
+
+        if should_switch {
+            let _ = self.start_bridge_serve(&pending_project);
+            self.pending_serve_project = None;
+        }
+
+        if !open {
+            self.pending_serve_project = None;
+        }
     }
 }
 

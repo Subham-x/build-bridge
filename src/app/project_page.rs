@@ -684,11 +684,26 @@ impl ProjectDashboardApp {
                                                     }
                                                     block_rects.push(restore_response.rect);
                                                 } else if project.status == "active" {
-                                                    let serve_response = ui
-                                                        .add(super::brand_button("Serve").min_size(Vec2::new(64.0, 26.0)));
+                                                    let is_active = self.is_bridge_online(&project.name);
+                                                    let button_label = if is_active { "Stop" } else { "Serve" };
+                                                    let button_fill = if is_active {
+                                                        Color32::from_rgb(220, 68, 55) // Red for Stop
+                                                    } else {
+                                                        Color32::from_rgb(2, 110, 193) // Blue for Serve
+                                                    };
+                                                    
+                                                    let serve_response = ui.add(
+                                                        Button::new(RichText::new(button_label).color(Color32::WHITE))
+                                                            .fill(button_fill)
+                                                            .min_size(Vec2::new(64.0, 26.0))
+                                                    );
                                                     if serve_response.clicked() {
-                                                        if let Err(err) = self.start_bridge_serve(&project) {
-                                                            self.project_action_error = Some(err);
+                                                        if is_active {
+                                                            self.stop_bridge_serve();
+                                                        } else {
+                                                            if let Err(err) = self.start_bridge_serve(&project) {
+                                                                self.project_action_error = Some(err);
+                                                            }
                                                         }
                                                     }
                                                     block_rects.push(serve_response.rect);
@@ -938,11 +953,25 @@ impl ProjectDashboardApp {
                                 .response
                                 .on_hover_text(format!("Stream: {current_stream_label}"));
                                 ui.add_space(6.0);
-                                let serve_button =
-                                    super::brand_button("Serve").min_size(Vec2::new(64.0, 26.0));
+                                
+                                let is_active = self.is_bridge_online(&project.name);
+                                let button_label = if is_active { "Stop" } else { "Serve" };
+                                let button_fill = if is_active {
+                                    Color32::from_rgb(220, 68, 55) // Red for Stop
+                                } else {
+                                    Color32::from_rgb(2, 110, 193) // Blue for Serve
+                                };
+                                
+                                let serve_button = Button::new(RichText::new(button_label).color(Color32::WHITE))
+                                    .fill(button_fill)
+                                    .min_size(Vec2::new(64.0, 26.0));
                                 if ui.add(serve_button).clicked() {
-                                    if let Err(err) = self.start_bridge_serve(project) {
-                                        self.project_action_error = Some(err);
+                                    if is_active {
+                                        self.stop_bridge_serve();
+                                    } else {
+                                        if let Err(err) = self.start_bridge_serve(project) {
+                                            self.project_action_error = Some(err);
+                                        }
                                     }
                                 }
                             });

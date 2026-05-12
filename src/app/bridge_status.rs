@@ -146,7 +146,10 @@ impl ProjectDashboardApp {
                         if ui.button("Restart").clicked() {
                             let _ = self.start_bridge_serve(project);
                         }
-                        if ui.button("Stop").clicked() {
+                        
+                        let stop_btn = egui::Button::new(RichText::new("Stop").color(Color32::WHITE))
+                            .fill(Color32::from_rgb(220, 68, 55));
+                        if ui.add(stop_btn).clicked() {
                             self.stop_bridge_serve();
                         }
                     } else {
