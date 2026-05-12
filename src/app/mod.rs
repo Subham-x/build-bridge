@@ -737,18 +737,31 @@ impl ProjectDashboardApp {
 
     fn stop_bridge_serve(&mut self) {
         if let Some(mut child) = self.serve_child.take() {
-            #[cfg(target_os = "windows")]
-            {
-                let pid = child.id();
-                // /F = Force, /T = Tree (including children)
-                let _ = Command::new("taskkill")
-                    .args(["/F", "/T", "/PID", &pid.to_string()])
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .spawn()
-                    .and_then(|mut c| c.wait());
-            }
-            let _ = child.kill();
+            let pid = child.id();
+            // Use a background thread to kill the process tree and orphans
+            std::thread::spawn(move || {
+                #[cfg(target_os = "windows")]
+                {
+                    // 1. Kill the specific process tree for this child
+                    let _ = std::process::Command::new("taskkill")
+                        .args(["/F", "/T", "/PID", &pid.to_string()])
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .status();
+                    
+                    // 2. Aggressively kill any other instances by name to prevent orphans
+                    let _ = std::process::Command::new("taskkill")
+                        .args(["/F", "/IM", "Build Stream by build Bridge.exe"])
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .status();
+                }
+                
+                // Fallback: kill the immediate child
+                let _ = child.kill();
+                // Ensure child is reaped
+                let _ = child.wait();
+            });
         }
         self.terminal_rx = None;
         self.serve_url = None;
