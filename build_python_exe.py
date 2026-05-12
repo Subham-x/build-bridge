@@ -31,7 +31,7 @@ def build_exe():
         "pyinstaller",
         "--onefile",
         "--noconsole",
-        "--name", "Build Stream by build Bridge",
+        "--name", "Build Stream",
         "--version-file", version_file,
         "--icon", icon_file,
         "--add-data", f"{html_path}{os.pathsep}.",
@@ -43,7 +43,7 @@ def build_exe():
     subprocess.check_call(cmd)
     
     # 3. Move the EXE to the target directory
-    exe_name = "Build Stream by build Bridge.exe"
+    exe_name = "Build Stream.exe"
     dist_path = os.path.join("dist", exe_name)
     target_path = os.path.join("target", "debug", "server", exe_name)
     

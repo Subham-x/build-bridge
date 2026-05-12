@@ -44,7 +44,7 @@ pub struct Config {
     pub project_list: ProjectListConfig,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct ProjectListConfig {
     #[serde(default)]
     pub sort: SortConfig,
@@ -86,13 +86,6 @@ impl Default for Preferences {
     }
 }
 
-impl Default for ProjectListConfig {
-    fn default() -> Self {
-        Self {
-            sort: SortConfig::default(),
-        }
-    }
-}
 
 impl Default for SortConfig {
     fn default() -> Self {

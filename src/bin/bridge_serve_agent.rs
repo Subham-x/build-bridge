@@ -9,15 +9,12 @@ use tiny_http::{Header, Method, Response, Server, StatusCode};
 
 #[derive(Deserialize)]
 struct BuildEntry {
-    name: String,
     path: String,
 }
 
 #[derive(Deserialize)]
 struct ProjectRecord {
     name: String,
-    #[serde(rename = "type")]
-    project_type: String,
     main_path: String,
     builds: Vec<BuildEntry>,
     #[serde(rename = "added-file", default)]
@@ -129,10 +126,9 @@ fn build_site(project: &ProjectRecord) -> Result<PathBuf, String> {
             items.push(item);
         }
     }
-    if let Some(extra) = &project.added_file {
-        if let Some(item) = copy_artifact(&project.main_path, extra, &files_dir) {
+    if let Some(extra) = &project.added_file
+        && let Some(item) = copy_artifact(&project.main_path, extra, &files_dir) {
             items.push(item);
-        }
     }
 
     let index_path = base_dir.join("index.html");
@@ -158,7 +154,7 @@ fn copy_artifact(main_path: &str, file_path: &str, files_dir: &Path) -> Option<A
     let file_name = source
         .file_name()
         .and_then(|name| name.to_str())
-        .map(|name| sanitize_segment(name))?;
+        .map(sanitize_segment)?;
     let dest = unique_destination(files_dir, &file_name);
 
     if let Err(err) = fs::copy(&source, &dest) {

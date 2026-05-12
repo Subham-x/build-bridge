@@ -159,10 +159,9 @@ impl ProjectDashboardApp {
                             self.stop_bridge_serve();
                         }
                     } else {
-                        if ui.button("Start").clicked() {
-                            if let Err(err) = self.start_bridge_serve(project) {
+                        if ui.button("Start").clicked()
+                            && let Err(err) = self.start_bridge_serve(project) {
                                 self.project_action_error = Some(err);
-                            }
                         }
                     }
                 });

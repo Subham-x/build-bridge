@@ -119,10 +119,9 @@ impl ProjectDashboardApp {
                         self.nav = super::Nav::PrivacyPolicy;
                     }
 
-                    if self.app_config.debug_page {
-                        if support_page_row(ui, dark, IconKind::Bug, "Debug").clicked() {
+                    if self.app_config.debug_page
+                        && support_page_row(ui, dark, IconKind::Bug, "Debug").clicked() {
                             self.nav = super::Nav::Debug;
-                        }
                     }
 
                     if self.selected_project_name.is_some() {

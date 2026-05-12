@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub enum ProjectType {
+    #[default]
     Android,
     Flutter,
     DotNet,
@@ -46,11 +47,6 @@ impl ProjectType {
     }
 }
 
-impl Default for ProjectType {
-    fn default() -> Self {
-        Self::Android
-    }
-}
 
 #[derive(Default)]
 pub struct CreateProjectForm {

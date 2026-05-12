@@ -8,7 +8,7 @@ pub fn run() -> Result<(), eframe::Error> {
     let icon_data = load_app_icon();
 
     let viewport = egui::ViewportBuilder::default()
-        .with_title("Build Stream")
+        .with_title("Build Bridge")
         .with_inner_size([1024.0, 538.0])
         .with_min_inner_size([920.0, 434.0])
         .with_icon(icon_data)
@@ -21,7 +21,7 @@ pub fn run() -> Result<(), eframe::Error> {
     };
 
     eframe::run_native(
-        "Build Stream",
+        "Build Bridge",
         native_options,
         Box::new(|cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);

@@ -144,7 +144,7 @@ impl ProjectDashboardApp {
                                     )
                                     .clicked()
                                 {
-                                    ui.close_menu();
+                                    ui.close();
                                 }
                                 if ui
                                     .selectable_value(
@@ -154,7 +154,7 @@ impl ProjectDashboardApp {
                                     )
                                     .clicked()
                                 {
-                                    ui.close_menu();
+                                    ui.close();
                                 }
                                 if ui
                                     .selectable_value(
@@ -164,7 +164,7 @@ impl ProjectDashboardApp {
                                     )
                                     .clicked()
                                 {
-                                    ui.close_menu();
+                                    ui.close();
                                 }
 
                                 ui.add_space(8.0);
@@ -179,7 +179,7 @@ impl ProjectDashboardApp {
                                     )
                                     .clicked()
                                 {
-                                    ui.close_menu();
+                                    ui.close();
                                 }
                                 if ui
                                     .selectable_value(
@@ -189,7 +189,7 @@ impl ProjectDashboardApp {
                                     )
                                     .clicked()
                                 {
-                                    ui.close_menu();
+                                    ui.close();
                                 }
                             },
                         );
@@ -437,13 +437,13 @@ impl ProjectDashboardApp {
                                                                     let pointer_over = ui
                                                                         .ctx()
                                                                         .pointer_hover_pos()
-                                                                        .map_or(false, |pos| rect.contains(pos));
+                                                                        .is_some_and(|pos| rect.contains(pos));
                                                                     let pointer_down =
                                                                         ui.ctx().input(|i| {
                                                                             i.pointer.primary_down()
                                                                                 && i.pointer
                                                                                     .interact_pos()
-                                                                                    .map_or(false, |pos| {
+                                                                                    .is_some_and(|pos| {
                                                                                         rect.contains(pos)
                                                                                     })
                                                                         });
@@ -666,24 +666,22 @@ impl ProjectDashboardApp {
                                                         super::brand_button("Unarchive")
                                                             .min_size(Vec2::new(64.0, 26.0)),
                                                     );
-                                                    if unarchive_response.clicked() {
-                                                        if let Err(err) = self.unarchive_project(&project.name) {
+                                                    if unarchive_response.clicked()
+                                                        && let Err(err) = self.unarchive_project(&project.name) {
                                                             self.project_action_error = Some(err);
-                                                        }
                                                     }
                                                     block_rects.push(unarchive_response.rect);
-                                                } else if self.nav == super::Nav::Bin {
+                                                    } else if self.nav == super::Nav::Bin {
                                                     let restore_response = ui.add(
                                                         super::brand_button("Restore")
                                                             .min_size(Vec2::new(64.0, 26.0)),
                                                     );
-                                                    if restore_response.clicked() {
-                                                        if let Err(err) = self.restore_project(&project.name) {
+                                                    if restore_response.clicked()
+                                                        && let Err(err) = self.restore_project(&project.name) {
                                                             self.project_action_error = Some(err);
-                                                        }
                                                     }
                                                     block_rects.push(restore_response.rect);
-                                                } else if project.status == "active" {
+                                                    } else if project.status == "active" {
                                                     let is_active = self.is_bridge_online(&project.name);
                                                     let button_label = if is_active { "Stop" } else { "Serve" };
                                                     let button_fill = if is_active {
@@ -691,7 +689,7 @@ impl ProjectDashboardApp {
                                                     } else {
                                                         Color32::from_rgb(2, 110, 193) // Blue for Serve
                                                     };
-                                                    
+
                                                     let serve_response = ui.add(
                                                         Button::new(RichText::new(button_label).color(Color32::WHITE))
                                                             .fill(button_fill)
@@ -707,31 +705,30 @@ impl ProjectDashboardApp {
                                                         }
                                                     }
                                                     block_rects.push(serve_response.rect);
-                                                }
-                                            });
-                                        });
-                                        ui.horizontal_wrapped(|ui| {
-                                            let framework_label = map_framework_label(&project.project_type);
-                                            ui.label(egui::RichText::new(framework_label).strong());
-                                            ui.label("•");
-                                            ui.label(egui::RichText::new(&project.main_path).italics());
-                                        });
-                                        })
-                                        .response;
-                                    let pointer_over_control = ui
-                                        .ctx()
-                                        .input(|i| i.pointer.interact_pos())
-                                        .map_or(false, |pos| {
-                                            block_rects.iter().any(|rect| rect.contains(pos))
-                                        });
-                                    let clicked_background = ui.ctx().input(|i| {
-                                        i.pointer.primary_clicked()
-                                            && i
-                                                .pointer
-                                                .interact_pos()
-                                                .map_or(false, |pos| card_response.rect.contains(pos))
-                                    });
-                                    if card_response.hovered() && !pointer_over_control {
+                                                    }
+                                                    });
+                                                    });
+                                                    ui.horizontal_wrapped(|ui| {
+                                                    let framework_label = map_framework_label(&project.project_type);
+                                                    ui.label(egui::RichText::new(framework_label).strong());
+                                                    ui.label("•");
+                                                    ui.label(egui::RichText::new(&project.main_path).italics());
+                                                    });
+                                                    })
+                                                    .response;
+                                                    let pointer_over_control = ui
+                                                    .ctx()
+                                                    .input(|i| i.pointer.interact_pos())
+                                                    .is_some_and(|pos| {
+                                                    block_rects.iter().any(|rect| rect.contains(pos))
+                                                    });
+                                                    let clicked_background = ui.ctx().input(|i| {
+                                                    i.pointer.primary_clicked()
+                                                    && i
+                                                    .pointer
+                                                    .interact_pos()
+                                                    .is_some_and(|pos| card_response.rect.contains(pos))
+                                                    });                                    if card_response.hovered() && !pointer_over_control {
                                         ui.painter().rect_stroke(
                                             card_response.rect,
                                             CornerRadius::same(8),
@@ -870,10 +867,8 @@ impl ProjectDashboardApp {
                                             .fill(Color32::from_rgb(255, 205, 67)),
                                         )
                                         .clicked()
-                                    {
-                                        if let Err(err) = self.open_feedback_folder(&project.name) {
+                                        && let Err(err) = self.open_feedback_folder(&project.name) {
                                             self.project_action_error = Some(err);
-                                        }
                                     }
                                 });
                             });

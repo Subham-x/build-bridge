@@ -388,11 +388,11 @@ impl eframe::App for ProjectDashboardApp {
             self.preferences.config.side_pane.width = Some(self.sidebar_width);
             changed = true;
         }
-        if self.preferences.config.side_pane.collapsed != !self.sidebar_visible {
+        if self.preferences.config.side_pane.collapsed == self.sidebar_visible {
             self.preferences.config.side_pane.collapsed = !self.sidebar_visible;
             changed = true;
         }
-        if self.preferences.project_settings.build_status_collapse != !self.bridge_status_expanded {
+        if self.preferences.project_settings.build_status_collapse == self.bridge_status_expanded {
             self.preferences.project_settings.build_status_collapse = !self.bridge_status_expanded;
             changed = true;
         }
@@ -411,10 +411,9 @@ impl eframe::App for ProjectDashboardApp {
             changed = true;
         }
 
-        if changed {
-            if let Err(err) = self.persist_preferences() {
+        if changed
+            && let Err(err) = self.persist_preferences() {
                 self.app_config_error = Some(err);
-            }
         }
     }
 }
@@ -437,26 +436,23 @@ impl ProjectDashboardApp {
 
     fn poll_terminal_output(&mut self, ctx: &egui::Context) {
         // 1. Try to read status from JSON file (Most Robust)
-        if self.serve_url.is_none() && self.serve_child.is_some() {
-            if let Some(appdata) = std::env::var_os("APPDATA") {
+        if self.serve_url.is_none() && self.serve_child.is_some()
+            && let Some(appdata) = std::env::var_os("APPDATA") {
                 let status_file = std::path::Path::new(&appdata)
                     .join("BuildBridge")
                     .join("BuildBridge")
                     .join("data")
                     .join("bridge.json");
-                if status_file.exists() {
-                    if let Ok(content) = std::fs::read_to_string(&status_file) {
-                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
-                            if let Some(url) = val["url"].as_str() {
-                                self.update_serve_url(ctx, url);
-                            }
-                            if let Some(version) = val["version"].as_str() {
-                                self.serve_version = Some(version.to_owned());
-                            }
+                if status_file.exists()
+                    && let Ok(content) = std::fs::read_to_string(&status_file)
+                    && let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(url) = val["url"].as_str() {
+                            self.update_serve_url(ctx, url);
                         }
-                    }
+                        if let Some(version) = val["version"].as_str() {
+                            self.serve_version = Some(version.to_owned());
+                        }
                 }
-            }
         }
 
         let Some(rx) = self.terminal_rx.as_ref() else {
@@ -493,12 +489,10 @@ impl ProjectDashboardApp {
             self.update_serve_url(ctx, &url);
         }
 
-        if should_restart {
-            if let Some(project_name) = self.serve_project.clone() {
-                if let Some(project) = self.projects.iter().find(|p| p.name == project_name).cloned() {
-                    let _ = self.start_bridge_serve(&project);
-                }
-            }
+        if should_restart
+            && let Some(project_name) = self.serve_project.clone()
+            && let Some(project) = self.projects.iter().find(|p| p.name == project_name).cloned() {
+                let _ = self.start_bridge_serve(&project);
         }
     }
 
@@ -681,7 +675,7 @@ impl ProjectDashboardApp {
             self.serve_child = Some(child);
             self.terminal_lines
                 .push("Server started in background (Hidden).".to_owned());
-            return Ok(());
+            Ok(())
         }
 
         #[cfg(not(target_os = "windows"))]
@@ -756,7 +750,7 @@ impl ProjectDashboardApp {
                     
                     // 2. Aggressively kill any other instances by name to prevent orphans
                     let _ = std::process::Command::new("taskkill")
-                        .args(["/F", "/IM", "Build Stream by build Bridge.exe"])
+                        .args(["/F", "/IM", "Build Stream.exe"])
                         .stdout(std::process::Stdio::null())
                         .stderr(std::process::Stdio::null())
                         .status();
@@ -1850,6 +1844,11 @@ impl ProjectDashboardApp {
                 self.app_config_error = Some(err);
             }
         }
+        ui.add_space(8.0);
+        if ui.button("Unhide Sidebar").clicked() {
+            self.sidebar_visible = true;
+            self.sidebar_animated_width = self.sidebar_width;
+        }
 
         if let Some(config_path) = &self.app_config_file_path {
             ui.add_space(8.0);
@@ -2203,22 +2202,17 @@ fn resolve_lan_host() -> (String, Vec<Ipv4Addr>) {
     let mut candidates = list_lan_ipv4();
 
     // Prefer the OS-reported local IP (fast, no outbound probe).
-    if let Ok(local_ip) = local_ip_address::local_ip() {
-        if let IpAddr::V4(v4) = local_ip {
-            if !v4.is_loopback() && !v4.is_unspecified() {
-                candidates.retain(|ip| *ip != v4);
-                return (v4.to_string(), candidates);
-            }
-        }
+    if let Ok(IpAddr::V4(v4)) = local_ip_address::local_ip()
+        && !v4.is_loopback() && !v4.is_unspecified() {
+            candidates.retain(|ip| *ip != v4);
+            return (v4.to_string(), candidates);
     }
 
     // Only probe for an active route if no interfaces were detected.
-    if candidates.is_empty() {
-        if let Ok(active_ip) = detect_local_ipv4() {
-            if !active_ip.is_loopback() && !active_ip.is_unspecified() {
-                return (active_ip.to_string(), Vec::new());
-            }
-        }
+    if candidates.is_empty()
+        && let Ok(active_ip) = detect_local_ipv4()
+        && !active_ip.is_loopback() && !active_ip.is_unspecified() {
+            return (active_ip.to_string(), Vec::new());
     }
 
     let preferred = candidates
@@ -2246,11 +2240,9 @@ fn detect_local_ipv4() -> Result<Ipv4Addr, String> {
     let socket = UdpSocket::bind(("0.0.0.0", 0)).map_err(|err| err.to_string())?;
     // Try to connect to a public DNS server to find the active local IP
     let _ = socket.connect(("8.8.8.8", 80));
-    match socket.local_addr() {
-        Ok(addr) => match addr.ip() {
-            IpAddr::V4(v4) if !v4.is_loopback() && !v4.is_unspecified() => Ok(v4),
-            _ => Err("No IPv4 address found".to_owned()),
-        },
+    match socket.local_addr().map(|addr| addr.ip()) {
+        Ok(IpAddr::V4(v4)) if !v4.is_loopback() && !v4.is_unspecified() => Ok(v4),
+        Ok(_) => Err("No IPv4 address found".to_owned()),
         Err(err) => Err(err.to_string()),
     }
 }
