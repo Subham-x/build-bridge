@@ -2145,7 +2145,8 @@ fn map_framework_label(stored: &str) -> String {
 
 fn file_timestamp(path: &Path) -> Option<String> {
     let metadata = fs::metadata(path).ok()?;
-    let timestamp = metadata.created().or_else(|_| metadata.modified()).ok()?;
+    // Prefer modified time for real-time updates when a file is overwritten
+    let timestamp = metadata.modified().or_else(|_| metadata.created()).ok()?;
     let datetime: DateTime<Local> = timestamp.into();
     Some(datetime.format("%Y-%m-%d %H:%M").to_string())
 }
