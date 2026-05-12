@@ -60,6 +60,28 @@ impl ProjectDashboardApp {
                     .auto_shrink([false, false])
                     .stick_to_bottom(true)
                     .show(ui, |ui| {
+                        // 1. Stylized Header
+                        ui.vertical(|ui| {
+                            ui.spacing_mut().item_spacing.y = 2.0;
+                            ui.label(RichText::new("________").color(Color32::from_gray(100)).font(terminal_font.clone()));
+                            
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = 0.0;
+                                ui.label(RichText::new("# ").color(Color32::from_gray(100)).font(terminal_font.clone()));
+                                ui.label(RichText::new("Build Stream").color(Color32::from_rgb(66, 133, 244)).strong().font(terminal_font.clone()));
+                            });
+                            
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = 0.0;
+                                ui.label(RichText::new("Version : ").color(Color32::from_gray(180)).font(terminal_font.clone()));
+                                let version = self.serve_version.as_deref().unwrap_or("1.1.0");
+                                ui.label(RichText::new(version).color(Color32::from_rgb(241, 250, 140)).font(terminal_font.clone()));
+                            });
+                            
+                            ui.label(RichText::new("________").color(Color32::from_gray(100)).font(terminal_font.clone()));
+                        });
+                        ui.add_space(8.0);
+
                         if self.terminal_lines.is_empty() {
                             self.render_terminal_line(
                                 ui,

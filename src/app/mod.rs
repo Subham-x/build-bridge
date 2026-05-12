@@ -194,6 +194,7 @@ pub struct ProjectDashboardApp {
     terminal_rx: Option<Receiver<String>>,
     serve_child: Option<Child>,
     serve_url: Option<String>,
+    serve_version: Option<String>,
     serve_token: Option<String>,
     serve_host: Option<String>,
     serve_project: Option<String>,
@@ -285,6 +286,7 @@ impl Default for ProjectDashboardApp {
             terminal_rx: None,
             serve_child: None,
             serve_url: None,
+            serve_version: None,
             serve_token: None,
             serve_host: None,
             serve_project: None,
@@ -447,6 +449,9 @@ impl ProjectDashboardApp {
                         if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
                             if let Some(url) = val["url"].as_str() {
                                 self.update_serve_url(ctx, url);
+                            }
+                            if let Some(version) = val["version"].as_str() {
+                                self.serve_version = Some(version.to_owned());
                             }
                         }
                     }

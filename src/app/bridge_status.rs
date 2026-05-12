@@ -24,7 +24,13 @@ impl ProjectDashboardApp {
         project: &ProjectRecord,
     ) {
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Bridge Status"));
+            ui.label(RichText::new("Bridge Status").strong());
+            if let Some(version) = &self.serve_version {
+                ui.add_space(8.0);
+                ui.label(RichText::new(format!("Build Stream Version : {}", version))
+                    .size(11.0)
+                    .color(ui.style().visuals.weak_text_color()));
+            }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let toggle_icon = if self.bridge_status_expanded {
                     IconKind::BridgeStatusCollapse
