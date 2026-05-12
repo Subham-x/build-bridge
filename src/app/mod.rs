@@ -20,7 +20,10 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::net::{IpAddr, Ipv4Addr, UdpSocket};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::Command;
+use portable_pty::{CommandBuilder, NativePtySystem, PtySize, MasterPty, Child as PtyChild, PtySystem};
+use std::io::Read;
+use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -192,7 +195,7 @@ pub struct ProjectDashboardApp {
     preferences_file_path: Option<PathBuf>,
     terminal_lines: Vec<String>,
     terminal_rx: Option<Receiver<String>>,
-    serve_child: Option<Child>,
+    serve_child: Option<Box<dyn PtyChild + Send>>,
     serve_url: Option<String>,
     serve_token: Option<String>,
     serve_host: Option<String>,
@@ -202,6 +205,7 @@ pub struct ProjectDashboardApp {
     show_close_confirmation: bool,
     pending_serve_project: Option<ProjectRecord>,
     is_shutting_down: bool,
+    pty_master: Option<Arc<Mutex<Box<dyn MasterPty + Send>>>>,
 }
 
 impl Default for ProjectDashboardApp {
@@ -293,6 +297,7 @@ impl Default for ProjectDashboardApp {
             show_close_confirmation: false,
             pending_serve_project: None,
             is_shutting_down: false,
+            pty_master: None,
         }
     }
 }
@@ -579,7 +584,6 @@ impl ProjectDashboardApp {
             return Ok(());
         }
 
-        // Check if another project is already being served
         if let Some(active_name) = &self.serve_project {
             if active_name != &project.name && self.serve_child.is_some() {
                 self.pending_serve_project = Some(project.clone());
@@ -592,17 +596,8 @@ impl ProjectDashboardApp {
         self.terminal_lines.clear();
         self.terminal_rx = None;
 
-        let (host_ip, alt_hosts) = resolve_lan_host();
+        let (host_ip, _alt_hosts) = resolve_lan_host();
         let bind_addr = "0.0.0.0".to_owned();
-
-        if host_ip.is_empty() {
-            self.terminal_lines.push("Warning: No LAN IP detected. Server might only be accessible locally.".to_owned());
-        } else {
-            self.terminal_lines.push(format!("LAN IP: http://{}:8080/", host_ip));
-            for alt in &alt_hosts {
-                self.terminal_lines.push(format!("Alternative LAN IP: http://{}:8080/", alt));
-            }
-        }
 
         self.serve_host = if host_ip.is_empty() {
             None
@@ -627,6 +622,7 @@ impl ProjectDashboardApp {
         self.bridge_qr_url = None;
 
         let mut args = vec![
+            agent_path.to_string_lossy().to_string(),
             "--projects".to_owned(),
             projects_path.display().to_string(),
             "--project".to_owned(),
@@ -641,75 +637,47 @@ impl ProjectDashboardApp {
             args.push(host_ip.clone());
         }
 
-        #[cfg(target_os = "windows")]
-        {
-            use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let pty_system = NativePtySystem::default();
+        let pair = pty_system
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| format!("Failed to open PTY: {e}"))?;
 
-            let mut child = Command::new(&agent_path)
-                .args(args)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .creation_flags(CREATE_NO_WINDOW)
-                .spawn()
-                .map_err(|err| {
-                    let message = format!("Failed to launch bridge agent: {err}");
-                    self.terminal_lines.push(format!("Error: {message}"));
-                    message
-                })?;
+        let mut cmd = CommandBuilder::new(&args[0]);
+        cmd.args(&args[1..]);
+        
+        let child = pair.slave.spawn_command(cmd)
+            .map_err(|e| format!("Failed to spawn command in PTY: {e}"))?;
 
-            let stdout = child.stdout.take().ok_or_else(|| {
-                let message = "Bridge agent stdout unavailable.".to_owned();
-                self.terminal_lines.push(format!("Error: {message}"));
-                message
-            })?;
-            let stderr = child.stderr.take().ok_or_else(|| {
-                let message = "Bridge agent stderr unavailable.".to_owned();
-                self.terminal_lines.push(format!("Error: {message}"));
-                message
-            })?;
+        let master = pair.master;
+        let mut reader = master.try_clone_reader().map_err(|e| format!("Failed to clone PTY reader: {e}"))?;
+        let (tx, rx) = mpsc::channel();
 
-            let (tx, rx) = mpsc::channel();
-            spawn_reader_thread(stdout, tx.clone());
-            spawn_reader_thread(stderr, tx);
-            self.terminal_rx = Some(rx);
-            self.serve_child = Some(child);
-            self.terminal_lines
-                .push("Server started in background (Hidden).".to_owned());
-            return Ok(());
-        }
+        thread::spawn(move || {
+            let mut buf = [0u8; 4096];
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let s = String::from_utf8_lossy(&buf[..n]).to_string();
+                        if tx.send(s).is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
 
-        #[cfg(not(target_os = "windows"))]
-        {
-            let mut child = Command::new(&agent_path)
-                .args(args)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .map_err(|err| {
-                    let message = format!("Failed to launch bridge agent: {err}");
-                    self.terminal_lines.push(format!("Error: {message}"));
-                    message
-                })?;
+        self.pty_master = Some(Arc::new(Mutex::new(master)));
+        self.terminal_rx = Some(rx);
+        self.serve_child = Some(child);
 
-            let stdout = child.stdout.take().ok_or_else(|| {
-                let message = "Bridge agent stdout unavailable.".to_owned();
-                self.terminal_lines.push(format!("Error: {message}"));
-                message
-            })?;
-            let stderr = child.stderr.take().ok_or_else(|| {
-                let message = "Bridge agent stderr unavailable.".to_owned();
-                self.terminal_lines.push(format!("Error: {message}"));
-                message
-            })?;
-
-            let (tx, rx) = mpsc::channel();
-            spawn_reader_thread(stdout, tx.clone());
-            spawn_reader_thread(stderr, tx);
-            self.terminal_rx = Some(rx);
-            self.serve_child = Some(child);
-            Ok(())
-        }
+        Ok(())
     }
 
     fn open_standalone_terminal(&self, project: &ProjectRecord) -> Result<(), String> {
@@ -737,32 +705,9 @@ impl ProjectDashboardApp {
 
     fn stop_bridge_serve(&mut self) {
         if let Some(mut child) = self.serve_child.take() {
-            let pid = child.id();
-            // Use a background thread to kill the process tree and orphans
-            std::thread::spawn(move || {
-                #[cfg(target_os = "windows")]
-                {
-                    // 1. Kill the specific process tree for this child
-                    let _ = std::process::Command::new("taskkill")
-                        .args(["/F", "/T", "/PID", &pid.to_string()])
-                        .stdout(std::process::Stdio::null())
-                        .stderr(std::process::Stdio::null())
-                        .status();
-                    
-                    // 2. Aggressively kill any other instances by name to prevent orphans
-                    let _ = std::process::Command::new("taskkill")
-                        .args(["/F", "/IM", "Build Stream by build Bridge.exe"])
-                        .stdout(std::process::Stdio::null())
-                        .stderr(std::process::Stdio::null())
-                        .status();
-                }
-                
-                // Fallback: kill the immediate child
-                let _ = child.kill();
-                // Ensure child is reaped
-                let _ = child.wait();
-            });
+            let _ = child.kill();
         }
+        self.pty_master = None;
         self.terminal_rx = None;
         self.serve_url = None;
         self.serve_token = None;
@@ -770,8 +715,18 @@ impl ProjectDashboardApp {
         self.serve_project = None;
         self.bridge_qr_texture = None;
         self.bridge_qr_url = None;
-        self.terminal_lines.push("Bridge stopped".to_owned());
         
+        thread::spawn(|| {
+            #[cfg(target_os = "windows")]
+            {
+                let _ = std::process::Command::new("taskkill")
+                    .args(["/F", "/IM", "Build Stream by build Bridge.exe"])
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status();
+            }
+        });
+
         if let Some(appdata) = std::env::var_os("APPDATA") {
             let status_file = std::path::Path::new(&appdata)
                 .join("BuildBridge")

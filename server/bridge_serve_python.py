@@ -11,20 +11,40 @@ import shutil
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
 
+# Server Version
+VERSION = "1.0.5"
+
+# ANSI Colors
+GREEN = "\033[32m"
+BLUE = "\033[34m"
+CYAN = "\033[36m"
+RED = "\033[31m"
+YELLOW = "\033[33m"
+RESET = "\033[0m"
+BOLD = "\033[1m"
+GRAY = "\033[90m"
+
 # Configuration from CLI args
 PORT = 8080
 BIND = "0.0.0.0"
 PROJECTS_FILE = ""
 PROJECT_NAME = ""
 
+def print_banner(server_url):
+    print(f"{CYAN}{BOLD}BuildBridge Server {VERSION}{RESET}")
+    print(f"{GRAY}----------------------------------------{RESET}")
+    print(f"{GREEN}Status: {RESET}Active")
+    print(f"{GREEN}Project:{RESET} {PROJECT_NAME}")
+    print(f"{GREEN}LAN IP: {RESET}{BOLD}{server_url}{RESET}")
+    print(f"{GRAY}----------------------------------------{RESET}")
+    print(f"{YELLOW}Waiting for connections...{RESET}\n")
+    sys.stdout.flush()
+
 def resource_path(relative_path):
-    """ Get absolute path to resource, works for dev and for PyInstaller """
     try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
         base_path = sys._MEIPASS
     except Exception:
         base_path = os.path.abspath(os.path.dirname(__file__))
-
     return os.path.join(base_path, relative_path)
 
 def get_local_ip():
@@ -45,7 +65,7 @@ def load_project_config(projects_file, project_name):
                 if p.get('name') == project_name:
                     return p
     except Exception as e:
-        print(f"Error loading projects: {e}")
+        print(f"{RED}Error loading projects: {e}{RESET}")
     return None
 
 def get_time_ago(timestamp):
@@ -61,10 +81,17 @@ def get_time_ago(timestamp):
     return f"{int(seconds // 86400)} days ago"
 
 class BridgeHandler(http.server.SimpleHTTPRequestHandler):
-    # In portable/no-console builds, stdout/stderr can be invalid on Windows.
-    # Disable request logging to avoid Errno 22 crashes.
     def log_message(self, format, *args):
-        return
+        # Custom rich logging for PTY
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        method = args[0]
+        path = args[1]
+        status = args[2]
+        
+        status_color = GREEN if status.startswith('2') else (RED if status.startswith('4') else YELLOW)
+        
+        sys.stdout.write(f"{GRAY}[{timestamp}]{RESET} {BLUE}{method}{RESET} {path} {status_color}{status}{RESET}\n")
+        sys.stdout.flush()
 
     def end_headers(self):
         self.send_header('Access-Control-Allow-Origin', '*')
@@ -82,7 +109,7 @@ class BridgeHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Content-type", "text/plain")
             self.end_headers()
             self.wfile.write(b"Restarting...")
-            print("RESTART_SIGNAL")
+            print(f"{YELLOW}RESTART_SIGNAL RECEIVED{RESET}")
             sys.stdout.flush()
             
             def kill_later():
@@ -93,7 +120,6 @@ class BridgeHandler(http.server.SimpleHTTPRequestHandler):
             threading.Thread(target=kill_later).start()
             return
 
-        # Serve the index page or files
         if self.path == "/":
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
@@ -105,12 +131,10 @@ class BridgeHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
             main_path = project.get('main_path', '')
-            # Find APKs in app/build/outputs/apk/ (typical Android path)
             search_path = os.path.join(main_path, "app", "build", "outputs", "apk", "**", "*.apk")
             apk_files = glob.glob(search_path, recursive=True)
             apk_files.sort(key=os.path.getmtime, reverse=True)
 
-            # Load the template
             template_path = resource_path("Serve-Page.html")
             if os.path.exists(template_path):
                 with open(template_path, 'r', encoding='utf-8') as f:
@@ -146,10 +170,7 @@ class BridgeHandler(http.server.SimpleHTTPRequestHandler):
                     build_items_html.append(item_html)
             
             final_html = html_content.replace("<!-- BUILD_LIST_PLACEHOLDER -->", "\n".join(build_items_html))
-            # Also replace the project title if needed
             final_html = final_html.replace("Build Bridge", f"{PROJECT_NAME} Builds")
-            
-            # Inject server status as online since we are serving this page
             final_html = final_html.replace("Server Offline", "Server Online")
             final_html = final_html.replace("text-red-500 animate-status-glow", "text-green-500")
 
@@ -176,7 +197,6 @@ class BridgeHandler(http.server.SimpleHTTPRequestHandler):
             super().do_GET()
 
 class SafeTCPServer(socketserver.TCPServer):
-    # Prevent Errno 22 crashes when stderr/stdout are invalid in portable builds.
     def handle_error(self, request, client_address):
         try:
             super().handle_error(request, client_address)
@@ -198,13 +218,12 @@ def main():
             BIND = args[i+1]
 
     if not PROJECTS_FILE or not PROJECT_NAME:
-        print("Missing required arguments")
+        print(f"{RED}Missing required arguments{RESET}")
         sys.exit(1)
 
     ip = get_local_ip()
     server_url = f"http://{ip}:{PORT}/"
     
-    # Write status to JSON file for robust communication with Rust
     try:
         appdata_path = os.getenv('APPDATA')
         if appdata_path:
@@ -221,13 +240,11 @@ def main():
                 "time": datetime.now().isoformat()
             }, f)
     except Exception as e:
-        print(f"Error writing status file: {e}")
+        pass
 
-    print(f"Bridge status: connected")
-    print(f"Listening on http://{BIND}:{PORT}")
-    print(f"LAN IP: {server_url}")
-    print(f"[[SERVER_URL]]={server_url}") # Marker for Rust to parse
-    sys.stdout.flush()
+    # Marker for Rust
+    print(f"[[SERVER_URL]]={server_url}")
+    print_banner(server_url)
 
     socketserver.TCPServer.allow_reuse_address = True
     with SafeTCPServer((BIND, PORT), BridgeHandler) as httpd:
