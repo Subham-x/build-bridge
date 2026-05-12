@@ -647,11 +647,24 @@ impl ProjectDashboardApp {
             })
             .map_err(|e| format!("Failed to open PTY: {e}"))?;
 
-        let mut cmd = CommandBuilder::new(&args[0]);
+        // Use absolute path for the executable
+        let exe_path = agent_path.to_string_lossy().to_string();
+        
+        let mut cmd = CommandBuilder::new(&exe_path);
+        // Ensure arguments are properly handled
         cmd.args(&args[1..]);
         
+        // On Windows, PTY spawning can be sensitive to the working directory
+        if let Some(parent) = agent_path.parent() {
+            cmd.cwd(parent);
+        }
+        
         let child = pair.slave.spawn_command(cmd)
-            .map_err(|e| format!("Failed to spawn command in PTY: {e}"))?;
+            .map_err(|e| {
+                let err_msg = format!("Failed to spawn command in PTY: {e}\nPath: {exe_path}");
+                self.terminal_lines.push(format!("\x1b[31mError: {}\x1b[0m", err_msg));
+                err_msg
+            })?;
 
         let master = pair.master;
         let mut reader = master.try_clone_reader().map_err(|e| format!("Failed to clone PTY reader: {e}"))?;

@@ -30,15 +30,29 @@ BIND = "0.0.0.0"
 PROJECTS_FILE = ""
 PROJECT_NAME = ""
 
+def safe_flush():
+    if sys.stdout is not None:
+        try:
+            sys.stdout.flush()
+        except Exception:
+            pass
+
+def safe_print(msg):
+    if sys.stdout is not None:
+        try:
+            print(msg)
+            safe_flush()
+        except Exception:
+            pass
+
 def print_banner(server_url):
-    print(f"{CYAN}{BOLD}BuildBridge Server {VERSION}{RESET}")
-    print(f"{GRAY}----------------------------------------{RESET}")
-    print(f"{GREEN}Status: {RESET}Active")
-    print(f"{GREEN}Project:{RESET} {PROJECT_NAME}")
-    print(f"{GREEN}LAN IP: {RESET}{BOLD}{server_url}{RESET}")
-    print(f"{GRAY}----------------------------------------{RESET}")
-    print(f"{YELLOW}Waiting for connections...{RESET}\n")
-    sys.stdout.flush()
+    safe_print(f"{CYAN}{BOLD}BuildBridge Server {VERSION}{RESET}")
+    safe_print(f"{GRAY}----------------------------------------{RESET}")
+    safe_print(f"{GREEN}Status: {RESET}Active")
+    safe_print(f"{GREEN}Project:{RESET} {PROJECT_NAME}")
+    safe_print(f"{GREEN}LAN IP: {RESET}{BOLD}{server_url}{RESET}")
+    safe_print(f"{GRAY}----------------------------------------{RESET}")
+    safe_print(f"{YELLOW}Waiting for connections...{RESET}\n")
 
 def resource_path(relative_path):
     try:
@@ -65,7 +79,7 @@ def load_project_config(projects_file, project_name):
                 if p.get('name') == project_name:
                     return p
     except Exception as e:
-        print(f"{RED}Error loading projects: {e}{RESET}")
+        safe_print(f"{RED}Error loading projects: {e}{RESET}")
     return None
 
 def get_time_ago(timestamp):
@@ -90,8 +104,13 @@ class BridgeHandler(http.server.SimpleHTTPRequestHandler):
         
         status_color = GREEN if status.startswith('2') else (RED if status.startswith('4') else YELLOW)
         
-        sys.stdout.write(f"{GRAY}[{timestamp}]{RESET} {BLUE}{method}{RESET} {path} {status_color}{status}{RESET}\n")
-        sys.stdout.flush()
+        log_line = f"{GRAY}[{timestamp}]{RESET} {BLUE}{method}{RESET} {path} {status_color}{status}{RESET}\n"
+        if sys.stdout is not None:
+            try:
+                sys.stdout.write(log_line)
+                safe_flush()
+            except Exception:
+                pass
 
     def end_headers(self):
         self.send_header('Access-Control-Allow-Origin', '*')
@@ -109,8 +128,7 @@ class BridgeHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Content-type", "text/plain")
             self.end_headers()
             self.wfile.write(b"Restarting...")
-            print(f"{YELLOW}RESTART_SIGNAL RECEIVED{RESET}")
-            sys.stdout.flush()
+            safe_print(f"{YELLOW}RESTART_SIGNAL RECEIVED{RESET}")
             
             def kill_later():
                 import time
@@ -218,7 +236,7 @@ def main():
             BIND = args[i+1]
 
     if not PROJECTS_FILE or not PROJECT_NAME:
-        print(f"{RED}Missing required arguments{RESET}")
+        safe_print(f"{RED}Missing required arguments{RESET}")
         sys.exit(1)
 
     ip = get_local_ip()
@@ -243,7 +261,7 @@ def main():
         pass
 
     # Marker for Rust
-    print(f"[[SERVER_URL]]={server_url}")
+    safe_print(f"[[SERVER_URL]]={server_url}")
     print_banner(server_url)
 
     socketserver.TCPServer.allow_reuse_address = True
